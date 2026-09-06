@@ -65,7 +65,7 @@ class ChatService {
     return _db
         .collection('messages')
         .where('conversationId', isEqualTo: conversationId)
-        .orderBy('createdAt', ascending: true)
+        .orderBy('createdAt', descending: false)
         .snapshots()
         .map((snap) => snap.docs
             .map((d) =>

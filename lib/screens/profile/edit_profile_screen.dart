@@ -14,7 +14,7 @@ class EditProfileScreen extends StatefulWidget {
 
 class _EditProfileScreenState extends State<EditProfileScreen> {
   late TextEditingController _name;
-  final _bio = TextEditingController();
+  late TextEditingController _bio;
   late String _countryCode;
 
   @override

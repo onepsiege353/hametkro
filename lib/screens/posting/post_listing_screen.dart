@@ -294,7 +294,7 @@ class _PostListingScreenState extends State<PostListingScreen> {
 
   Widget _categoryDropdown() {
     return DropdownButtonFormField<String>(
-      initialValue: _categoryId,
+      value: _categoryId,
       items: [
         for (final c in Category.all)
           DropdownMenuItem(
@@ -306,7 +306,7 @@ class _PostListingScreenState extends State<PostListingScreen> {
 
   Widget _conditionPicker() {
     return DropdownButtonFormField<String>(
-      initialValue: _condition,
+      value: _condition,
       items: [
         for (final c in kConditions) DropdownMenuItem(value: c, child: Text(c)),
       ],

@@ -167,7 +167,8 @@ class _ConversationTile extends StatelessWidget {
 
   Future<UserLite> _fetch(String id) async {
     try {
-      final u = await _users.getById(id);
+      final users = UserService();
+      final u = await users.getById(id);
       if (u == null) return const UserLite('', 'Vendeur', null);
       return UserLite(id, u.fullName, u.photoUrl);
     } catch (_) {

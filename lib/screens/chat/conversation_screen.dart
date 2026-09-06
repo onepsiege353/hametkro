@@ -310,7 +310,8 @@ class _ConversationScreenState extends State<ConversationScreen> {
         child: Row(
           children: [
             IconButton(
-              icon: const Icon(Icons.negotiate_outlined),
+              tooltip: 'Proposer un prix',
+              icon: const Icon(Icons.request_quote_outlined),
               onPressed: () => setState(() => _offerMode = !_offerMode),
             ),
             Expanded(

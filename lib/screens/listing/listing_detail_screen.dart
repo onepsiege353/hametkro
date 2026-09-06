@@ -99,8 +99,6 @@ class _ListingDetailScreenState extends State<ListingDetailScreen> {
     final isOwn = me?.uid == _listing.sellerId;
     final fav = context.watch<FavoritesProvider>();
     final cat = Category.byId(_listing.categoryId);
-    final co2 = estimateCo2Saved(_listing.categoryId);
-    final waterLiters = co2 * 250; // approximation pour l'équivalence
 
     return Scaffold(
       backgroundColor: const Color(0xFFF7F7F5),
@@ -157,6 +155,8 @@ class _ListingDetailScreenState extends State<ListingDetailScreen> {
   }
 
   Widget _content(BuildContext context, me, cat) {
+    final co2 = estimateCo2Saved(_listing.categoryId);
+    final waterLiters = co2 * 250;
     return ListView(
       padding: const EdgeInsets.only(bottom: 130),
       children: [
@@ -260,7 +260,7 @@ class _ListingDetailScreenState extends State<ListingDetailScreen> {
     );
   }
 
-  Widget _ecoCard(double co2, double liters) {
+  Widget _ecoCard(double co2, double waterLiters) {
     return Container(
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
@@ -489,7 +489,7 @@ class _ReportSheetState extends State<_ReportSheet> {
               style: TextStyle(fontSize: 17, fontWeight: FontWeight.w800)),
           const SizedBox(height: 14),
           DropdownButtonFormField<String>(
-            initialValue: _reason,
+            value: _reason,
             items: [
               for (final r in ReportService.reasons)
                 DropdownMenuItem(value: r, child: Text(r)),
