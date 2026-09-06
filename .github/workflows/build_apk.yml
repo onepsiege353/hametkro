@@ -74,6 +74,24 @@ jobs:
       - name: Générer la plateforme Android
         run: flutter create --platforms android --org com.hametkro --project-name hametkro .
 
+      # Le runner GitHub embarque parfois un android.jar (plateforme 35) corrompu
+      # qui fait échouer aapt2. On force compileSdk=34 (sain) pour TOUS les
+      # modules, y compris les plugins Firebase.
+      - name: Forcer compileSdk=34 (contourne android.jar 35 corrompu)
+        run: |
+          cat >> android/build.gradle <<'EOF'
+
+          subprojects {
+              afterEvaluate { proj ->
+                  if (proj.hasProperty('android')) {
+                      proj.android {
+                          compileSdkVersion 34
+                      }
+                  }
+              }
+          }
+          EOF
+
       - name: Dépendances Flutter
         run: flutter pub get
 
