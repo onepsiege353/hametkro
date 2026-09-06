@@ -864,7 +864,10 @@ function listenConvs(){ auth.onAuthStateChanged(u=>{ if(chatUnsub)chatUnsub(); c
 // Liste mes conversations (onglet Messages)
 function messagesV(){ if(!curProfile) return `<div class="hdr"><h2>Messages</h2></div><div class="center cardp" style="padding:60px 24px"><div style="font-size:60px">💬</div><h2>Ta messagerie</h2><p class="muted">Connecte-toi pour discuter avec les vendeurs.</p><button class="btn g" onclick="openAuth()">Créer un compte / se connecter</button></div>`;
   if(!convCache.length) return `<div class="hdr"><h2>Messages</h2></div><div class="center cardp" style="padding:60px 24px"><div style="font-size:56px">💬</div><h2>Aucune discussion</h2><p class="muted">Ouvre une annonce et clique « Discuter » avec le vendeur.</p><button class="btn g" onclick="view='home';shell()">Parcourir les annonces</button></div>`;
-  const sorted=convCache.slice().sort((a,b)=>(b.lastAt||0)-(a.lastAt||0));
+  // Non-lus d'abord, puis les plus récents.
+  const sorted=convCache.slice().sort((a,b)=>{ const ua=unreadOf(a)?1:0, ub=unreadOf(b)?1:0;
+    if(ua!==ub) return ub-ua;
+    return (b.lastAt||0)-(a.lastAt||0); });
   return `<div class="hdr"><h2>Messages</h2>${msgUnread?`<span class="badge" style="background:var(--sang);margin-left:8px">${msgUnread} non-lus</span>`:''}</div>
    ${needsReplyHtml()}
    <div style="padding:4px 12px 40px">${sorted.map(c=>{const o=otherName(c);const u=unreadOf(c);
@@ -913,10 +916,15 @@ function otherUid(c){ const o=otherName(c); return o?o.uid:null; }
 function fmtClock(t){ if(!t)return ''; const d=new Date(t); return pad2(d.getHours())+':'+pad2(d.getMinutes()); }
 function convItem(){ const c=_convData; if(!c)return null; return (allListings||[]).find(l=>l.id===c.itemId)||null; }
 // Indicateur "en train d'écrire…" : écritures limitées (début + fin de saisie).
-let _typingActive=false, _typingTimer=null;
+let _typingActive=false, _typingTimer=null, _typingLastWrite=0;
+// Rafraîchit `typing` au démarrage puis ~1x/2,5 s pendant la frappe (écritures limitées),
+// et l'efface après 3,5 s d'inactivité => indicateur « écrit… » précis côté récepteur.
 function chatTypingStart(){ if(!_activeCid||!curProfile)return;
-  if(!_typingActive){ _typingActive=true;
-    db.collection('conversations').doc(_activeCid).update({typing:{uid:curProfile.uid,at:Date.now()}}).catch(()=>{}); }
+  const now=Date.now();
+  if(!_typingActive){ _typingActive=true; _typingLastWrite=now;
+    db.collection('conversations').doc(_activeCid).update({typing:{uid:curProfile.uid,at:now}}).catch(()=>{}); }
+  else if(now-_typingLastWrite>2500){ _typingLastWrite=now;
+    db.collection('conversations').doc(_activeCid).update({typing:{uid:curProfile.uid,at:now}}).catch(()=>{}); }
   if(_typingTimer)clearTimeout(_typingTimer);
   _typingTimer=setTimeout(chatTypingStop, 3500); }
 function chatTypingStop(){ if(!_activeCid)return; _typingActive=false;
@@ -1058,12 +1066,18 @@ function quickReplies(){ const it=convItem();
       'Il est toujours dispo. Remise en main propre ou livraison possible.',
       'Le prix affiché est ma base — on peut en discuter raisonnablement.',
       'D\'accord pour ce prix 👍 Je te propose de passer par la transaction sécurisée Hametkro.',
-      'Je ne demande jamais d\'avance : tout se règle à la remise.']; }
+      'Je ne demande jamais d\'avance : tout se règle à la remise.',
+      'Oui, je peux te fournir plus de photos ou de détails techniques.',
+      'Je peux te le garder sous réserve — je préfère rester sur la transaction officielle.',
+      'Merci pour ton message, je reviens vers toi dans quelques minutes.']; }
   return ['Bonjour 👋 L\'article est-il toujours disponible ?',
     'Peux-tu m\'envoyer plus de photos ou détails ?',
     'Est-ce possible de descendre un peu sur le prix ?',
     'D\'accord pour ce prix, lançons une transaction sécurisée.',
-    'Quand et où peut-on faire la remise / livraison ?']; }
+    'Quand et où peut-on faire la remise / livraison ?',
+    'L\'article correspond-il bien à la description ?',
+    'Peux-tu confirmer que tu ne demandes pas d\'avance ?',
+    'Merci, je regarde et je reviens vers toi rapidement.']; }
 function quickSectionLabel(){ const it=convItem();
   return (it&&curProfile&&it.sellerId===curProfile.uid)?'⚡ Réponses types vendeur':'⚡ Messages rapides'; }
 function openQuickMenu(){ const p=document.getElementById('quickPanel'); if(!p)return;
