@@ -254,6 +254,7 @@ const COMM_RATE=0.06;
 const CATS=[
  {id:'phone',e:'📱',n:'Téléphones'},{id:'computer',e:'💻',n:'Ordinateurs'},
  {id:'cars',e:'🚗',n:'Voitures & Moto'},{id:'fashion',e:'👗',n:'Mode & Friperie'},
+ {id:'drepaker',e:'🕶️',n:'Drepaker'},
  {id:'furniture',e:'🛋️',n:'Meubles'},{id:'electronics',e:'🎧',n:'Électronique'},
  {id:'sports',e:'⚽',n:'Sport & Loisirs'},{id:'books',e:'📚',n:'Livres'}];
 const CONDS=['Neuf','Comme neuf','Très bon état','Bon état','Correct','À réparer'];
@@ -803,7 +804,9 @@ async function openSeller(sid){ closeAll();
   const soldCount = allListings.filter(l=>l.sellerId===sid && l.sold).length;
   // stats vendeur
   const asSeller = txCache.filter(t=>t.sellerId===sid && t.status==='done');
-  const rating = seller && seller.rating ? seller.rating : '4.8';
+  const revs = await sellerReviews(sid);
+  const rating = revs.length ? avgRating(revs) : (seller && seller.rating ? String(seller.rating) : null);
+  const revCount = revs.length;
   const sales = asSeller.length || soldCount;
   const joinedTxt = sellerJoined? ('Membre depuis '+new Date(sellerJoined).getFullYear()) : '';
   const tTrust=sellerTrust(sid,seller);
@@ -819,7 +822,7 @@ async function openSeller(sid){ closeAll();
        ${verifiedOk(seller)?'<span class="badge-chip">✓ Vérifié</span>':'<span class="badge-chip">Compte de base</span>'}
        <span class="badge-chip">✅ ${tTrust.done} vente${tTrust.done>1?'s':''}</span>
        <span class="badge-chip">🛒 ${myItems.length} en vente</span>
-       <span class="badge-chip">⭐ ${rating}</span>
+       <span class="badge-chip">${rating?`⭐ ${rating}${revCount?` (${revCount})`:''}`:'⭐ Nouveau vendeur'}</span>
      </div>${caution}
    </div>`;
   const sellerItems = myItems.length ? `<div style="padding:6px 12px"><h3 style="margin:12px 2px 8px">Ses annonces</h3><div class="grid" style="padding-top:4px">${myItems.map(tile).join('')}</div></div>` : '<p class="muted center" style="padding:30px">Ce vendeur n\'a pas d\'article en vente actuellement.</p>';
@@ -838,7 +841,17 @@ async function openSeller(sid){ closeAll();
   if(seller) socMap.forEach(sm=>{ const v=seller[sm[0]]; if(v) socIcons+=`<a href="https://${sm[2]}${encodeURIComponent(String(v).replace(/^@/,''))}" target="_blank" rel="noopener" style="flex:1;text-align:center;background:#fff;border:1px solid var(--line);border-radius:11px;padding:8px 4px;font-size:11px;color:var(--grn);text-decoration:none">${sm[1]}</a>`; });
   const contactCard = (infoRows||socIcons)? `<div class="box" style="margin:10px 12px 4px">${infoRows}${socIcons?`<div style="display:flex;gap:8px;margin-top:${infoRows?'6px':'0'};flex-wrap:wrap">${socIcons}</div>`:''}</div>`:'';
   const coverBanner = seller&&seller.cover ? `<div style="height:140px;overflow:hidden;position:relative"><img src="${esc(seller.cover)}" style="width:100%;height:100%;object-fit:cover"><div style="position:absolute;inset:0;box-shadow:inset 0 -30px 40px -30px rgba(0,0,0,.4)"></div></div>` : '';
-  renderApp(`<div class="topbar"><div class="logo grow"><b>hamet</b><i>kro</i></div><button class="btn g sm" onclick="view='home';shell()">← Accueil</button></div>${coverBanner}${head}${contactCard}${sellerItems}${actions}<div style="height:30px"></div>`);
+  // Bloc « Avis des acheteurs » (notation vendeur + commentaires)
+  const reviewsSorted = revs.slice().sort((a,b)=>(b.createdAt||0)-(a.createdAt||0));
+  const reviewsBlock = `<div style="padding:6px 12px">
+    <h3 style="margin:14px 2px 8px">⭐ Avis des acheteurs${revCount?` · <span style="color:var(--gold)">${rating}/5</span> (${revCount})`:''}</h3>
+    ${revCount ? reviewsSorted.slice(0,30).map(r=>`<div class="box" style="padding:11px 13px;border-left:3px solid var(--gold)">
+      <div class="row" style="justify-content:space-between"><b style="font-size:12.5px">${esc(r.authorName||'Acheteur')}</b><span style="color:var(--gold);font-size:12px;letter-spacing:1px">${starRow(r.rating||0)}</span></div>
+      ${r.comment?`<p style="margin:5px 0 0;font-size:12.5px;line-height:1.4">${esc(r.comment)}</p>`:''}
+      <div class="muted" style="font-size:9.5px;margin-top:4px">Transaction clôturée · ${timeago(r.createdAt)}</div></div>`).join('')
+      : `<p class="muted" style="padding:4px 2px">Aucun avis pour l'instant. Les acheteurs notent le vendeur après une transaction clôturée.</p>`}
+  </div>`;
+  renderApp(`<div class="topbar"><div class="logo grow"><b>hamet</b><i>kro</i></div><button class="btn g sm" onclick="view='home';shell()">← Accueil</button></div>${coverBanner}${head}${contactCard}${sellerItems}${reviewsBlock}${actions}<div style="height:30px"></div>`);
   document.documentElement.scrollTop=0;
 }
 function detail(id){let l=allListings.find(x=>x.id===id);if(!l)return;
@@ -1329,7 +1342,10 @@ function txCard(t){let u=curProfile;let isBuyer=t.buyerId===u.uid;let isSeller=t
    if(isBuyer&&!t.validBuyer)act=`<button class="btn g sm" onclick="confirmTx('${t.id}','buyer')">Je confirme avoir reçu l'article</button>`;
    else if(isSeller&&!t.validSeller)act=`<button class="btn g sm" onclick="confirmTx('${t.id}','seller')">Je confirme le paiement reçu</button>`;
  }
- if(t.status==='done')act=`<div class="info">✅ Terminée — commission ${fmt(t.commission)} FCFA.</div>`;
+ if(t.status==='done'){ act=`<div class="info">✅ Terminée — commission ${fmt(t.commission)} FCFA.</div>`;
+   if(isBuyer && !reviewedTx(t.id)) act+=`<button class="btn gold sm" style="margin-top:6px" onclick="reviewSellerSheet('${t.id}')">⭐ Noter le vendeur & laisser un avis</button>`;
+   else if(isBuyer && reviewedTx(t.id)) act+=`<div class="muted" style="margin-top:6px;font-size:11px">⭐ Tu as déjà noté ce vendeur. Merci !</div>`; }
+
  if(t.status==='dispute')act=`<div class="warn">⚠️ Litige — l'admin va arbitrer.</div>`;
  return `<div class="box" style="border-left:4px solid var(--grn)"><div class="row"><b class="grow">${esc(t.itemTitle)}</b><span class="muted">${fmt(t.price)} FCFA</span></div>
   <div class="muted">${isBuyer?'Tu es acheteur':'Tu es vendeur'} · ${t.mode==='hand'?'🤝 main propre':'📦 livraison'}</div>${h}${act}</div>`;}
@@ -1340,6 +1356,41 @@ async function confirmTx(id,who){let ref=db.collection('transactions').doc(id);l
  closeAll();if(t.status==='done'){toast('🎉 Transaction terminée !');}else{toast('Validation enregistrée ✅');}
  if(view==='sell'||view==='home') shell();
  view='sell';shell();}
+
+/* ============== AVIS & NOTATION VENDEUR (après achat) ============== */
+// L'acheteur note le vendeur + commentaire une fois la transaction clôturée.
+// Stocké dans la collection `reviews` (règle : create par l'auteur, lecture publique).
+let myReviews=[], myRevTx=new Set();
+function listenReviews(){ auth.onAuthStateChanged(u=>{ if(u){
+  db.collection('reviews').where('authorId','==',u.uid).onSnapshot(s=>{
+    myReviews=s.docs.map(d=>{const x=d.data();x.id=d.id;return x;});
+    myRevTx=new Set(myReviews.filter(r=>r.kind!=='food'&&r.txId).map(r=>r.txId));
+    if(!chatIsOpen()&&view==='sell')shell(); }, ()=>{});
+} else { myReviews=[]; myRevTx=new Set(); } }); }
+function reviewedTx(txId){ return myRevTx.has(txId); }
+async function sellerReviews(sid){ try{ const s=await db.collection('reviews').where('sellerId','==',sid).get(); return s.docs.map(d=>{const x=d.data();x.id=d.id;return x;}); }catch(e){ return []; } }
+function avgRating(revs){ if(!revs||!revs.length) return null; return (revs.reduce((a,r)=>a+(r.rating||0),0)/revs.length).toFixed(1); }
+function starRow(n){ return '⭐'.repeat(Math.max(0,Math.min(5,n)))+'☆'.repeat(Math.max(0,5-n)); }
+function reviewSellerSheet(txId){ if(!curProfile) return openAuth();
+  const tx=(txCache||[]).find(x=>x.id===txId); if(!tx) return toast('Transaction introuvable');
+  if(tx.buyerId!==curProfile.uid) return toast('Seul l\'acheteur peut noter ce vendeur');
+  window._rateStars=5; window._revTxId=txId;
+  openSheet(`<div class="row" style="justify-content:space-between;padding:12px 0"><h2 style="margin:0;font-size:18px">⭐ Noter ${esc(tx.sellerName)}</h2><span style="cursor:pointer;font-size:20px" onclick="closeAll()">✕</span></div>
+   <div class="muted" style="margin:2px 0 6px">Après « ${esc(tx.itemTitle)} » · ${fmt(tx.price)} FCFA</div>
+   <label>Ta note</label>
+   <div id="rev_stars" style="font-size:34px;letter-spacing:2px;margin:6px 0 2px">${[1,2,3,4,5].map(i=>`<span style="cursor:pointer" onclick="setRate(${i})">${i<=5?'⭐':'☆'}</span>`).join('')}</div>
+   <div class="muted" style="font-size:11px">1 = très mauvaise expérience · 5 = excellent vendeur</div>
+   <label style="margin-top:10px">Commentaire (optionnel)</label><textarea id="rev_c" class="input" rows="3" placeholder="Remise rapide, article conforme, vendeur honnête…"></textarea>
+   <button class="btn g" onclick="reviewSubmit()">Publier mon avis</button>`); }
+function setRate(n){ window._rateStars=n; const el=document.getElementById('rev_stars'); if(el) el.innerHTML=[1,2,3,4,5].map(i=>`<span style="cursor:pointer" onclick="setRate(${i})">${i<=n?'⭐':'☆'}</span>`).join(''); }
+async function reviewSubmit(){ if(!curProfile) return; const txId=window._revTxId; if(!txId) return;
+  const tx=(txCache||[]).find(x=>x.id===txId); if(!tx) return toast('Transaction introuvable');
+  const rating=window._rateStars||5; const comment=(val('rev_c')||'').trim();
+  try{
+    await db.collection('reviews').add({kind:'seller',txId:tx.id,sellerId:tx.sellerId,sellerName:tx.sellerName,
+      authorId:curProfile.uid,authorName:curProfile.name,rating,comment,createdAt:Date.now()});
+    myRevTx.add(tx.id); closeAll(); toast('⭐ Merci, ton avis est publié !'); view='sell';shell();
+  }catch(e){ console.error('REVIEW',e&&e.code,e&&e.message); toast('❌ '+(e&&e.message||'erreur')); } }
 
 /* ============== PROFIL / ADMIN ============== */
 function profileV(){if(!curProfile)return `<div class="center cardp" style="padding:60px 24px"><div style="font-size:60px">👤</div><h2>Espace membre</h2><p class="muted">Connecte-toi pour vendre et gérer tes transactions.</p><button class="btn g" onclick="openAuth()">Créer un compte / se connecter</button></div>`;
@@ -1850,7 +1901,7 @@ window.addEventListener('beforeinstallprompt',(e)=>{e.preventDefault();deferredP
 async function installPWA(){ if(!deferredPrompt)return; deferredPrompt.prompt(); const c=await deferredPrompt.userChoice; deferredPrompt=null; toast('Merci ! Hametkro est installé 📲'); }
 
 /* ============== DÉMARRAGE ============== */
-try{ fb(); listenListings(); listenTx(); listenConvs(); listenFood(); listenAdmin(); listenFavs(); listenAlerts(); }catch(e){ renderApp(`<div class="load"><div style="font-size:46px">⚠️</div><div>Erreur d'initialisation Firebase.</div><div class="muted">Ouvre cette page via le serveur (http), pas en fichier local, et vérifie firebase-config.js.</div></div>`);}
+try{ fb(); listenListings(); listenTx(); listenConvs(); listenFood(); listenAdmin(); listenFavs(); listenAlerts(); listenReviews(); }catch(e){ renderApp(`<div class="load"><div style="font-size:46px">⚠️</div><div>Erreur d'initialisation Firebase.</div><div class="muted">Ouvre cette page via le serveur (http), pas en fichier local, et vérifie firebase-config.js.</div></div>`);}
 </script>
 </body>
 </html>
