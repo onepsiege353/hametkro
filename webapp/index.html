@@ -8,7 +8,6 @@
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
-<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-storage-compat.js"></script>
 <script src="firebase-config.js"></script>
 <style>
   :root{--org:#FF7A00;--org-d:#E06A00;--grn:#009A44;--grn-d:#007A36;--ink:#17150F;--grey:#6E6A5E;--line:#E9E6DD;--bg:#F7F6F1;--white:#fff;--sang:#E6453C}
@@ -91,10 +90,10 @@ function openModal(h){closeAll();document.getElementById('modal').innerHTML=h;do
 function renderApp(h){document.getElementById('app').innerHTML=h}
 
 /* ============== FIREBASE ============== */
-let db, auth, storage, curUser=null, curProfile=null;
+let db, auth, curUser=null, curProfile=null;
 function fb(){
   firebase.initializeApp(window.HAM_FIREBASE_CONFIG);
-  auth=firebase.auth(); db=firebase.firestore(); storage=firebase.storage();
+  auth=firebase.auth(); db=firebase.firestore();
   // Permet plusieurs onglets sans conflit, sinon prend session en cache
   auth.setPersistence(firebase.auth.Auth.Persistence.LOCAL).catch(()=>{});
   auth.onAuthStateChanged(async u=>{ curUser=u;
@@ -199,7 +198,7 @@ function pickCat(el){el.closest('.row').querySelectorAll('.catpill').forEach(x=>
 function pickCond(el){el.closest('.row').querySelectorAll('.catpill').forEach(x=>x.classList.remove('on'));el.classList.add('on');document.getElementById(curSheetId+'_cond').value=el.dataset.c}
 function readImg(pid,input){let f=input.files[0];if(!f)return;let r=new FileReader();r.onload=()=>{let img=new Image();img.onload=()=>{let m=Math.min(1,600/Math.max(img.width,img.height)),cv=document.createElement('canvas');cv.width=img.width*m;cv.height=img.height*m;cv.getContext('2d').drawImage(img,0,0,cv.width,cv.height);pendingImg=cv.toDataURL('image/jpeg',.75);document.getElementById(pid+'_ph').innerHTML='<img src="'+pendingImg+'" style="width:100%;height:96px;object-fit:cover;border-radius:14px">'};img.src=r.result};r.readAsDataURL(f)}
 async function publish(pid){let t=val(pid+'_t').trim(),p=parseFloat(val(pid+'_p')),city=val(pid+'_c')||'Abidjan',d=val(pid+'_d');if(t.length<3)return toast('Titre requis');if(!p||p>0===false||!p)return toast('Prix invalide');
- try{let imgUrl='';if(pendingImg){const ref=storage.ref('images/'+curProfile.uid+'/'+uidr()+'.jpg');await ref.putString(pendingImg,'data_url');imgUrl=await ref.getDownloadURL();}
+ try{let imgUrl=pendingImg||''; // photo stockée en base (Firestore), pas de Storage requis
  let doc=db.collection('listings').doc();let now=Date.now();
  await doc.set({id:doc.id,cat:document.getElementById(pid+'_cat').value,t,p,city,cond:document.getElementById(pid+'_cond').value,size:'',d,img:imgUrl,sellerId:curProfile.uid,sellerName:curProfile.name,sold:false,time:now,createdAt:now,views:0});
  closeAll();toast('🎉 Publié !');view='sell';shell();}catch(e){toast('❌ Erreur: '+e.message)}}
