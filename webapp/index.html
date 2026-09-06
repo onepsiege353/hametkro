@@ -126,6 +126,21 @@ if ('serviceWorker' in navigator) {
   .thumbWrap img{width:100%;height:100%;object-fit:cover}
   .thumbWrap .rm{position:absolute;top:2px;right:2px;background:#e6453c;color:#fff;border:none;border-radius:50%;width:20px;height:20px;font-size:12px;cursor:pointer;line-height:20px}
   .addPhoto{width:80px;height:80px;border:2px dashed var(--org);border-radius:12px;display:flex;align-items:center;justify-content:center;color:var(--org);background:#FFF7EF;cursor:pointer;flex-direction:column;font-size:11px}
+  /* ===== Chat acheteur / vendeur ===== */
+  .chatHead{display:flex;gap:10px;align-items:center;padding:11px 14px;background:#fff;border-bottom:1px solid var(--line)}
+  .chatBox{height:calc(100vh - 172px);max-height:70vh;overflow-y:auto;padding:14px 14px 8px;display:flex;flex-direction:column;gap:7px;background:var(--bg)}
+  .chatItem{display:flex;gap:10px;align-items:center;padding:11px;background:#fff;border:1px solid var(--line);border-radius:13px;margin:7px 0;cursor:pointer}
+  .bubble{max-width:78%;padding:9px 12px;border-radius:16px;font-size:13.5px;line-height:1.4;white-space:pre-wrap;word-break:break-word;position:relative}
+  .bubble .bt{font-size:9.5px;opacity:.65;display:block;margin-top:3px;text-align:right}
+  .bubble.me{background:var(--grn);color:#fff;align-self:flex-end;border-bottom-right-radius:4px}
+  .bubble.them{background:#fff;border:1px solid var(--line);align-self:flex-start;border-bottom-left-radius:4px}
+  .chatInput{display:flex;gap:8px;padding:10px 12px;background:#fff;border-top:1px solid var(--line);align-items:center}
+  .chatInput .input{margin:0;border-radius:24px}
+  .sendBtn{background:var(--grn);color:#fff;border:none;border-radius:50%;width:46px;height:46px;font-size:20px;cursor:pointer;flex:none}
+  /* date / séparateur dans le chat */
+  .daysep{text-align:center;font-size:10px;color:var(--grey);margin:8px 0 2px}
+  /* petit point non-lu sur liste de conversations */
+  .unreadDot{width:9px;height:9px;border-radius:50%;background:var(--sang);flex:none}
   /* ===== RESPONSIVE : écrans moyens et grands (tablette / ordinateur) ===== */
   .nav{position:sticky;bottom:0;width:100%;max-width:460px;margin:0 auto}
   .grid .tile .img{height:160px}
@@ -261,7 +276,7 @@ function isAdmin(){return curProfile&&curProfile.role==='admin'}
 let view='home', catF='all', q='', allListings=[];
 function boot(){ shell(); }
 function shell(){
-  let body = view==='home'?homeV(): view==='sell'?sellV(): view==='me'?profileV(): view==='admin'?adminV(): homeV();
+  let body = view==='home'?homeV(): view==='sell'?sellV(): view==='msg'?messagesV(): view==='me'?profileV(): view==='admin'?adminV(): homeV();
   let top = curProfile? `<div class="logo grow"><b>hamet</b><i>kro</i><small>${esc(curProfile.country||"Côte d'Ivoire")} ${(curProfile.countryCode==='CI'||!curProfile.countryCode)?'🇨🇮':'🌍'} · ${esc(curProfile.city||'')}</small></div>
       <div style="display:flex;align-items:center;gap:10px">
         <div style="text-align:right;font-size:11px;color:var(--grey)">${esc((curProfile.name||'Compte').split(' ')[0])} ${isAdmin()?'<span class="badge">ADMIN</span>':''}</div>
@@ -270,8 +285,11 @@ function shell(){
       </div>`
     : `<div class="logo grow"><b>hamet</b><i>kro</i><small>Côte d'Ivoire 🇨🇮 · navigation libre</small></div>
       <button class="btn g sm" onclick="openAuth()">Se connecter</button>`;
-  let items=[['home','🏠','Accueil'],['sell','🗂️','Vendre'],['me','👤','Compte']]
-    .map(([k,i,l])=>`<button class="${view===k?'on':''}" onclick="view='${k}';shell()"><span class="i">${i}</span>${l}</button>`).join('');
+  let msgBadge = curProfile&&msgUnread>0?`<span style="position:absolute;top:-2px;right:calc(50% - 20px);background:var(--sang);color:#fff;font-size:9px;font-weight:800;border-radius:50%;min-width:16px;height:16px;display:flex;align-items:center;justify-content:center;padding:0 3px">${msgUnread>99?'99+':msgUnread}</span>`:'';
+  let items=[['home','🏠','Accueil'],['sell','🗂️','Vendre']];
+  if(curProfile) items.push(['msg','💬','Messages']);
+  items.push(['me','👤','Compte']);
+  items=items.map(([k,i,l])=>`<button class="${view===k?'on':''}" onclick="view='${k}';shell()"><span class="i" style="position:relative">${i}${k==='msg'?msgBadge:''}</span>${l}</button>`).join('');
   if(isAdmin()) items+=`<button class="${view==='admin'?'on':''}" onclick="view='admin';shell()"><span class="i">📊</span>Admin</button>`;
   let installBar = deferredPrompt ? `<div style="position:fixed;left:50%;transform:translateX(-50%);bottom:64px;width:100%;max-width:460px;z-index:45;padding:6px 12px">
     <div style="background:var(--org);color:#fff;border-radius:14px;padding:10px 12px;display:flex;align-items:center;gap:8px;box-shadow:0 4px 14px rgba(0,0,0,.18)">
@@ -381,9 +399,29 @@ function detail(id){let l=allListings.find(x=>x.id===id);if(!l)return;
   <div class="box"><b>Description</b><p class="muted" style="margin:5px 0;font-size:13px">${esc(l.d||"Vendeur de confiance. Remise en main propre, paiement à la réception — jamais d'avance.")}</p></div>
   <div class="box" style="display:flex;gap:10px;align-items:center;cursor:pointer" onclick="closeAll();openSeller('${l.sellerId}')"><div class="av">🛍️</div><div class="grow"><b>${esc(l.sellerName||'Vendeur')}</b><br><span class="muted">Vendeur ${esc(l.city||'')} · voir profil →</span></div><span class="badge">Vérifié</span></div>
   ${mine?'<div class="info">C\'est ton article.</div>':
-    `<button class="btn g" onclick="curUser?startContact('${l.id}'):openAuth('sell')">💬 Contacter le vendeur</button>
+    `<div class="row" style="gap:8px;margin-top:8px">
+      <button class="btn g" style="flex:1" onclick="curUser?openChatFromListing('${l.id}'):openAuth('sell')">💬 Discuter</button>
+      <button class="btn ghost" style="flex:1" onclick="shareListing('${l.id}')">📤 Partager</button></div>
+     <button class="btn ghost" style="margin-top:8px" onclick="curUser?startContact('${l.id}'):openAuth('sell')">🛡️ Lancer une transaction sécurisée</button>
      <div class="info" style="text-align:center">🔒 Achat sécurisé : validation mutuelle. Commission ${Math.round(COMM_RATE*100)}%.</div>`}
   </div>`);}
+// ===== Partage WhatsApp + lien d'annonce =====
+function listingURL(id){return location.origin+location.pathname+'?a='+id;}
+function waUrl(id){const l=allListings.find(x=>x.id===id);if(!l)return'';const url=listingURL(id);
+  const txt=`${l.t} - ${fmt(l.p)} FCFA (${l.cond||''}), ${l.city||'Abidjan'}, Côte d'Ivoire 🇨🇮\n\nVoir l'annonce sur Hametkro : ${url}\n\n🔒 Achat sécurisé, ne paie jamais d'avance.`;
+  return 'https://wa.me/?text='+encodeURIComponent(txt);}
+function shareListing(id){const l=allListings.find(x=>x.id===id);if(!l)return;
+  openSheet(`<div class="row" style="justify-content:space-between;padding:12px 0"><b>📤 Partager l'annonce</b><span style="cursor:pointer;font-size:20px" onclick="closeAll()">✕</span></div>
+   <div class="card" style="display:flex;gap:12px;align-items:center;padding:10px;margin:4px 0 12px"><img src="${esc(firstImg(l))}" style="width:64px;height:64px;object-fit:cover;border-radius:12px"><div class="grow"><b>${esc(l.t)}</b><div style="color:var(--grn);font-weight:800">${fmt(l.p)} FCFA</div></div></div>
+   <a class="btn g" style="text-decoration:none;text-align:center" href="${waUrl(id)}" target="_blank" rel="noopener">🟢 Partager sur WhatsApp</a>
+   <div style="height:8px"></div>
+   <button class="btn ghost" onclick="copyListingLink('${id}')">🔗 Copier le lien de l'annonce</button>
+   <p class="muted" style="text-align:center;margin-top:10px">Le lien ouvre directement cette annonce dans Hametkro.</p>`);}
+async function copyListingLink(id){const url=listingURL(id);
+  try{await navigator.clipboard.writeText(url);toast('🔗 Lien copié !');}
+  catch(e){prompt('Copie ce lien :',url);}}
+function openListingFromURL(){const p=new URLSearchParams(location.search);const a=p.get('a');
+  if(a&&allListings.find(x=>x.id===a))setTimeout(()=>detail(a),60);}
 
 /* ============== AUTH ============== */
 function openAuth(){openModal(`<div class="cardp">
@@ -457,6 +495,90 @@ async function publish(pid){let t=val(pid+'_t').trim(),p=parseFloat(val(pid+'_p'
  await doc.set({id:doc.id,cat:document.getElementById(pid+'_cat').value,t,p,city,cond:document.getElementById(pid+'_cond').value,size:'',d,photos,sellerId:curProfile.uid,sellerName:curProfile.name,sold:false,time:now,createdAt:now,views:0});
  closeAll();delete pendingPhotos[pid];toast('🎉 Publié !');view='sell';shell();}catch(e){toast('❌ Erreur: '+e.message)}}
 
+/* ============== MESSAGERIE (chat acheteur/vendeur) ============== */
+// Le chat est stocké dans la collection `conversations`. Les messages vivent
+// dans le champ `msgs` du document (tableau), ce qui respecte les règles
+// Firestore déjà publiées : lecture/écriture réservées aux participants.
+let convCache=[], msgUnread=0, chatUnsub=null, activeConv=null;
+function convIdKey(a,b,item){return [a,b].sort().join('__')+'__'+item;}
+function otherName(c){ return curProfile && c.participants.find(p=>p.uid!==curProfile.uid); }
+function mySeen(c){return c.seen && curProfile ? (c.seen[curProfile.uid]||0):0;}
+function unreadOf(c){ if(!curProfile)return 0; const s=mySeen(c); return (c.msgs||[]).filter(m=>m.uid!==curProfile.uid && m.time>s).length; }
+// Charge mes conversations (temps réel) une fois connecté.
+function listenConvs(){ auth.onAuthStateChanged(u=>{ if(chatUnsub)chatUnsub(); convCache=[]; msgUnread=0;
+  if(!u){ if(activeConv){} activeConv=null; if(view==='msg')boot(); return; }
+  chatUnsub=db.collection('conversations').where('participantIds','array-contains',u.uid).onSnapshot(snap=>{
+    convCache=snap.docs.map(d=>d.data());
+    msgUnread=convCache.reduce((s,c)=>s+unreadOf(c),0);
+    if(view==='msg'||view==='home')boot();
+  }); }); }
+// Liste mes conversations (onglet Messages)
+function messagesV(){ if(!curProfile) return `<div class="hdr"><h2>Messages</h2></div><div class="center cardp" style="padding:60px 24px"><div style="font-size:60px">💬</div><h2>Ta messagerie</h2><p class="muted">Connecte-toi pour discuter avec les vendeurs.</p><button class="btn g" onclick="openAuth()">Créer un compte / se connecter</button></div>`;
+  if(!convCache.length) return `<div class="hdr"><h2>Messages</h2></div><div class="center cardp" style="padding:60px 24px"><div style="font-size:56px">💬</div><h2>Aucune discussion</h2><p class="muted">Ouvre une annonce et clique « Discuter » avec le vendeur.</p><button class="btn g" onclick="view='home';shell()">Parcourir les annonces</button></div>`;
+  const sorted=convCache.slice().sort((a,b)=>(b.lastAt||0)-(a.lastAt||0));
+  return `<div class="hdr"><h2>Messages</h2>${msgUnread?`<span class="badge" style="background:var(--sang);margin-left:8px">${msgUnread} non-lus</span>`:''}</div>
+   <div style="padding:4px 12px 40px">${sorted.map(c=>{const o=otherName(c);const u=unreadOf(c);
+     return `<div class="chatItem" onclick="openConv('${c.id}')">
+      <div class="av" style="background:linear-gradient(135deg,#FCE8D6,#E5F4EA)">🛍️</div>
+      <div class="grow"><div style="display:flex;justify-content:space-between;align-items:center">
+        <b style="font-size:14px">${esc(o?o.name:'Vendeur')}</b><span class="muted" style="font-size:10px">${timeago(c.lastAt)}</span></div>
+        <div style="font-size:12px;color:var(--grn);font-weight:600">${esc(c.itemTitle||'')}</div>
+        <div style="display:flex;justify-content:space-between;align-items:center"><span class="muted" style="font-size:12px">${esc((c.msgs&&c.msgs.length)? (c.msgs[c.msgs.length-1].uid===curProfile.uid?'Vous : ':'')+c.msgs[c.msgs.length-1].text : 'Nouvelle discussion')}</span>
+        ${u?`<span style="background:var(--org);color:#fff;font-size:9px;font-weight:800;border-radius:50%;min-width:17px;height:17px;display:flex;align-items:center;justify-content:center;padding:0 3px">${u}</span>`:''}</div></div>
+      </div>`;}).join('')}</div>`; }
+// Ouvre / crée une conversation avec le vendeur d'une annonce.
+async function openChatFromListing(id){ if(!curProfile) return openAuth();
+  const l=allListings.find(x=>x.id===id); if(!l) return;
+  if(l.sellerId===curProfile.uid) return toast('C\'est ton propre article');
+  const other=l.sellerId, otherNm=l.sellerName||'Vendeur';
+  const cid=convIdKey(curProfile.uid,other,id);
+  const ref=db.collection('conversations').doc(cid);
+  const d=await ref.get();
+  if(!d.exists){
+    await ref.set({id:cid,participantIds:[curProfile.uid,other],
+      participants:[{uid:curProfile.uid,name:curProfile.name},{uid:other,name:otherNm}],
+      itemId:id,itemTitle:l.t,msgs:[],lastAt:Date.now(),seen:{},createdAt:Date.now()});
+  }
+  openConv(cid);
+}
+async function openConv(cid){ if(!curProfile) return openAuth();
+  const ref=db.collection('conversations').doc(cid); const d=await ref.get();
+  if(!d.exists) return; const c=d.data(); activeConv=c;
+  // marque comme lu
+  const seen=c.seen||{}; seen[curProfile.uid]=Date.now();
+  await ref.update({seen}).catch(()=>{});
+  renderConv(); _convRef=ref;
+  if(chatUnsub)chatUnsub();
+  chatUnsub=ref.onSnapshot(snap=>{ if(!snap.exists)return; activeConv=snap.data(); renderConv(); const s=snap.data().seen||{}; if(!s[curProfile.uid]){s[curProfile.uid]=Date.now();ref.update({seen:s}).catch(()=>{});} });
+  setTimeout(()=>{const b=document.getElementById('convSc'); if(b)b.scrollTop=b.scrollHeight;},60);
+}
+let _convRef=null;
+function closeConv(){ if(chatUnsub)chatUnsub(); chatUnsub=null; activeConv=null; view='msg';shell(); }
+function renderConv(){ const c=activeConv; if(!c)return;
+  const o=otherName(c); const name=esc(o?o.name:'Vendeur');
+  const msgs=c.msgs||[];
+  let html=msgs.map(m=>{const me=m.uid===curProfile.uid;
+    return `<div class="bubble ${me?'me':'them'}">${esc(m.text)}<span class="bt">${me?'vous':esc(m.name||'')} · ${timeago(m.time)}</span></div>`;}).join('')
+    ||`<p class="muted center" style="padding:30px 0">Dites bonjour 👋</p>`;
+  renderApp(`<div class="chatHead"><button class="btn ghost sm" onclick="closeConv()">←</button>
+    <div class="grow"><b>${name}</b><div class="muted" style="font-size:11px">🛍️ ${esc(c.itemTitle||'')}</div></div>
+    <span class="badge">Vérifié</span></div>
+    <div class="chatBox" id="convSc">${html}</div>
+    <div class="chatInput"><input id="msgText" class="input" placeholder="Écris un message…" onkeydown="if(event.key==='Enter')sendMsg()">
+    <button class="sendBtn" onclick="sendMsg()">➤</button></div>`);
+  setTimeout(()=>{const b=document.getElementById('convSc'); if(b)b.scrollTop=b.scrollHeight;},20);
+}
+async function sendMsg(){ const inp=document.getElementById('msgText'); const txt=(inp?inp.value:'').trim();
+  if(!txt||!activeConv) return; if(chatUnsub)chatUnsub();
+  const ref=_convRef||db.collection('conversations').doc(activeConv.id);
+  const msg={uid:curProfile.uid,name:curProfile.name,text:txt,time:Date.now()};
+  const cur=activeConv; const msgs=(cur.msgs||[]).concat(msg);
+  const seen=cur.seen||{}; seen[curProfile.uid]=Date.now();
+  await ref.update({msgs,lastAt:Date.now(),lastMsg:txt,seen}).catch(()=>{});
+  if(inp)inp.value='';
+  chatUnsub=ref.onSnapshot(snap=>{ if(!snap.exists)return; activeConv=snap.data(); renderConv(); });
+}
+
 /* ============== TRANSACTION SÉCURISÉE ============== */
 function startContact(id){let l=allListings.find(x=>x.id===id);if(!l)return;
  openSheet(`<div class="row" style="justify-content:space-between;padding:12px 0"><b>Contacter ${esc(l.sellerName)}</b><span style="cursor:pointer;font-size:20px" onclick="closeAll()">✕</span></div>
@@ -512,8 +634,8 @@ function adminV(){if(!isAdmin())return profileV();
 async function resolve(id){let ref=db.collection('transactions').doc(id);let d=await ref.get();let t=d.data();t.status='done';await ref.update({status:'done',updatedAt:Date.now()});view='admin';shell();toast('Litige clôturé ✅');}
 
 /* ============== ÉCOUTE DES DONNÉES (Firestore temps réel) ============== */
-let txCache=[];
-function listenListings(){db.collection('listings').orderBy('time','desc').onSnapshot(snap=>{allListings=snap.docs.map(d=>d.data());boot();},err=>{renderApp(`<div class="load"><div style="font-size:46px">⚠️</div><div>Impossible de lire les annonces.<br><span class="muted">Vérifie que Firestore est activé et les règles publiées.</span></div><div>${esc(err&&err.message||'')}</div></div>`);});}
+let txCache=[], _deepDone=false;
+function listenListings(){db.collection('listings').orderBy('time','desc').onSnapshot(snap=>{allListings=snap.docs.map(d=>d.data());boot();if(!_deepDone){_deepDone=true;setTimeout(openListingFromURL,200);}},err=>{renderApp(`<div class="load"><div style="font-size:46px">⚠️</div><div>Impossible de lire les annonces.<br><span class="muted">Vérifie que Firestore est activé et les règles publiées.</span></div><div>${esc(err&&err.message||'')}</div></div>`);});}
 function listenTx(){auth.onAuthStateChanged(u=>{ if(!u){txCache=[];notifsCache=[];notifUnread=0;return;}
   db.collection('transactions').where('participants','array-contains',u.uid).onSnapshot(snap=>{txCache=snap.docs.map(d=>d.data());buildNotifs(u.uid);if(view==='sell'||view==='admin'||view==='home')boot();}); });}
 // Reconstruit aussi les notifs au chargement initial d'un utilisateur connecté.
@@ -525,7 +647,7 @@ window.addEventListener('beforeinstallprompt',(e)=>{e.preventDefault();deferredP
 async function installPWA(){ if(!deferredPrompt)return; deferredPrompt.prompt(); const c=await deferredPrompt.userChoice; deferredPrompt=null; toast('Merci ! Hametkro est installé 📲'); }
 
 /* ============== DÉMARRAGE ============== */
-try{ fb(); listenListings(); listenTx(); }catch(e){ renderApp(`<div class="load"><div style="font-size:46px">⚠️</div><div>Erreur d'initialisation Firebase.</div><div class="muted">Ouvre cette page via le serveur (http), pas en fichier local, et vérifie firebase-config.js.</div></div>`);}
+try{ fb(); listenListings(); listenTx(); listenConvs(); }catch(e){ renderApp(`<div class="load"><div style="font-size:46px">⚠️</div><div>Erreur d'initialisation Firebase.</div><div class="muted">Ouvre cette page via le serveur (http), pas en fichier local, et vérifie firebase-config.js.</div></div>`);}
 </script>
 </body>
 </html>
