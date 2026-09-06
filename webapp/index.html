@@ -46,7 +46,7 @@ if ('serviceWorker' in navigator) {
   *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
   html{-webkit-text-size-adjust:100%}
   body{margin:0;font-family:var(--font);background:linear-gradient(180deg,#EAF0EA,#E2E9E4);color:var(--ink);letter-spacing:.1px}
-  .shell{max-width:480px;margin:0 auto;min-height:100vh;min-height:100dvh;background:var(--paper);position:relative;box-shadow:0 0 0 1px rgba(0,0,0,.03),0 0 60px rgba(30,80,50,.06)}
+  .shell{max-width:480px;margin:0 auto;min-height:100vh;min-height:100dvh;background:var(--paper);position:relative;box-shadow:0 0 0 1px rgba(0,0,0,.03),0 0 60px rgba(30,80,50,.06);padding-bottom:84px}
   #app{display:flex;flex-direction:column}
   .flag{display:flex;height:3.5px;border-radius:999px;overflow:hidden;margin:0 14px}
   .flag span{flex:1}.flag span:nth-child(1){background:#F0701E}.flag span:nth-child(2){background:#fff}.flag span:nth-child(3){background:var(--grn)}
@@ -99,7 +99,7 @@ if ('serviceWorker' in navigator) {
   .search .ic{position:absolute;left:15px;top:13px;color:var(--grey2);font-size:15px}
   .hdr{display:flex;align-items:center;padding:12px 16px}
   .hdr h2{margin:0;font-size:20px;font-weight:800;letter-spacing:-.3px}
-  .nav{position:sticky;bottom:0;left:0;width:100%;max-width:480px;margin:auto;background:#fff;border-top:1px solid var(--line);display:flex;z-index:30;padding:6px 6px calc(8px + env(safe-area-inset-bottom,0px));box-shadow:0 -6px 18px rgba(20,40,30,.05)}
+  .nav{position:fixed;bottom:0;left:50%;transform:translateX(-50%);width:100%;max-width:480px;background:#fff;border-top:1px solid var(--line);display:flex;z-index:30;padding:6px 6px calc(8px + env(safe-area-inset-bottom,0px));box-shadow:0 -6px 18px rgba(20,40,30,.06)}
   .nav button{flex:1;border:none;background:none;padding:7px 0 8px;font-size:9.5px;font-weight:600;color:var(--grey);cursor:pointer;font-family:inherit;border-radius:12px;transition:.15s}
   .nav button .i{font-size:21px;display:block;margin-bottom:2px}
   .nav button.on{color:var(--grn);background:var(--grn-soft);font-weight:800}
@@ -175,6 +175,7 @@ if ('serviceWorker' in navigator) {
   .thumbWrap .rm{position:absolute;top:3px;right:3px;background:#e6453c;color:#fff;border:none;border-radius:50%;width:20px;height:20px;font-size:12px;cursor:pointer;line-height:20px}
   .addPhoto{width:80px;height:80px;border:2px dashed var(--org);border-radius:14px;display:flex;align-items:center;justify-content:center;color:var(--org);background:var(--org-soft);cursor:pointer;flex-direction:column;font-size:11px;transition:.15s}
   .addPhoto:hover{background:#ffe6cc}
+  .shell.nopad{padding-bottom:0!important}
   .chatHead{display:flex;gap:10px;align-items:center;padding:12px 14px;background:#fff;border-bottom:1px solid var(--line)}
   .chatBox{height:calc(100dvh - 190px);max-height:70vh;overflow-y:auto;padding:16px 14px 10px;display:flex;flex-direction:column;gap:8px;background:var(--bg)}
   .chatItem{display:flex;gap:10px;align-items:center;padding:12px;background:#fff;border:1px solid var(--line);border-radius:14px;margin:8px 0;cursor:pointer;box-shadow:var(--sh-s)}
@@ -202,7 +203,7 @@ if ('serviceWorker' in navigator) {
   .pill-cta{display:inline-flex;align-items:center;gap:6px;background:var(--grn-soft);color:var(--grn-d);border-radius:999px;padding:6px 12px;font-size:11px;font-weight:700}
   .title-x{display:flex;align-items:center;justify-content:space-between}
   /* ===== RESPONSIVE : écrans moyens et grands ===== */
-  .nav{position:sticky;bottom:0;width:100%;max-width:480px;margin:0 auto}
+  .nav{width:100%;max-width:480px}
   .grid .tile .img{height:168px}
   @media (min-width:600px){
     .grid{padding:18px 20px 60px;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:16px}
@@ -214,8 +215,8 @@ if ('serviceWorker' in navigator) {
   }
   @media (min-width:900px){
     body{background:#E7EDE8}
-    .shell{border-radius:0}
-    .nav{position:sticky;top:0;bottom:auto;border-top:none;border-bottom:1px solid var(--line);order:-1;max-width:1180px;margin:0 auto;border-radius:0 0 16px 16px;padding:6px 8px}
+    .shell{border-radius:0;padding-bottom:0}
+    .nav{position:sticky;top:0;left:0;transform:none;bottom:auto;border-top:none;border-bottom:1px solid var(--line);order:-1;max-width:1180px;margin:0 auto;border-radius:0 0 16px 16px;padding:6px 8px}
     .nav button{padding:12px 4px 10px;font-size:10.5px;border-bottom:2px solid transparent;border-radius:10px 10px 0 0}
     .nav button.on{background:transparent;border-bottom-color:var(--org)}
     .nav button.on .i{font-size:22px}
@@ -481,8 +482,10 @@ async function openSeller(sid){ closeAll();
      </div>
    </div>`;
   const sellerItems = myItems.length ? `<div style="padding:6px 12px"><h3 style="margin:12px 2px 8px">Ses annonces</h3><div class="grid" style="padding-top:4px">${myItems.map(tile).join('')}</div></div>` : '<p class="muted center" style="padding:30px">Ce vendeur n\'a pas d\'article en vente actuellement.</p>';
+  const phW=((seller&&(seller.wa||seller.phone))||'').replace(/[^0-9]/g,'');
+  const waBtn = phW.length>=8 ? `<a class="btn g" style="text-decoration:none;margin-top:6px" href="https://wa.me/${phW}?text=${encodeURIComponent('Bonjour, je vous contacte via Hametkro.')}" target="_blank" rel="noopener">🟢 Contacter sur WhatsApp</a>` : '';
   let actions='';
-  if(!mine && curProfile && curProfile.uid!==sid){ actions=`<div style="padding:4px 14px"><button class="btn g" onclick="toast('Contacte le vendeur depuis l\'une de ses annonces')">💬 Contacter ${esc(sellerName)}</button></div>`; }
+  if(!mine && curProfile && curProfile.uid!==sid){ actions=`<div style="padding:4px 14px"><button class="btn g" onclick="view='home';shell()">💬 Voir ses annonces</button>${waBtn}</div>`; }
   else if(!mine && !curProfile){ actions=`<div style="padding:4px 14px"><button class="btn g" onclick="openAuth()">Se connecter pour contacter</button></div>`; }
   if(mine){ actions=`<div style="padding:4px 14px"><button class="btn ghost" onclick="view='me';shell()">C\'est ton profil</button></div>`; }
   renderApp(`<div class="topbar"><div class="logo grow"><b>hamet</b><i>kro</i></div><button class="btn g sm" onclick="view='home';shell()">← Accueil</button></div>${head}${sellerItems}${actions}<div style="height:30px"></div>`);
@@ -502,10 +505,12 @@ function detail(id){let l=allListings.find(x=>x.id===id);if(!l)return;
     `<div class="row" style="gap:8px;margin-top:8px">
       <button class="btn g" style="flex:1" onclick="curUser?openChatFromListing('${l.id}'):openAuth('sell')">💬 Discuter</button>
       <button class="btn ghost" style="flex:1" onclick="shareListing('${l.id}')">📤 Partager</button></div>
+     <a id="detWa" class="btn ghost" style="margin-top:8px;display:none;text-decoration:none" target="_blank" rel="noopener">🟢 Contacter sur WhatsApp</a>
      <button class="btn ghost" style="margin-top:8px" onclick="curUser?startContact('${l.id}'):openAuth('sell')">🛡️ Lancer une transaction sécurisée</button>
      <div class="info" style="text-align:center">🔒 Achat sécurisé : validation mutuelle. Commission ${Math.round(COMM_RATE*100)}%.</div>`}
   </div>`);
   loadDetailPres(l.sellerId);
+  loadDetWa(l.sellerId);
 }
 // ===== Partage WhatsApp + lien d'annonce =====
 function listingURL(id){return location.origin+location.pathname+'?a='+id;}
@@ -614,7 +619,7 @@ async function publish(pid){let t=val(pid+'_t').trim(),p=parseFloat(val(pid+'_p'
  let photos=pendingPhotos[pid]||[];if(photos.length===0)return toast('Ajoute au moins une photo');
  try{
  let doc=db.collection('listings').doc();let now=Date.now();
- await doc.set({id:doc.id,cat:document.getElementById(pid+'_cat').value,t,p,city,cond:document.getElementById(pid+'_cond').value,size:'',d,photos,sellerId:curProfile.uid,sellerName:curProfile.name,sold:false,time:now,createdAt:now,views:0});
+ await doc.set({id:doc.id,cat:document.getElementById(pid+'_cat').value,t,p,city,cond:document.getElementById(pid+'_cond').value,size:'',d,photos,sellerId:curProfile.uid,sellerName:curProfile.name,sellerWa:curProfile.wa||'',sold:false,time:now,createdAt:now,views:0});
  closeAll();delete pendingPhotos[pid];toast('🎉 Publié !');view='sell';shell();}catch(e){toast('❌ Erreur: '+e.message)}}
 
 /* ============== MESSAGERIE (chat acheteur/vendeur) ============== */
@@ -674,15 +679,20 @@ async function openChatFromListing(id){ if(!curProfile) return openAuth();
   }catch(e){ console.error('CHAT_OPEN_ERR', e && e.code, e && e.message); toast('❌ Impossible d\'ouvrir la discussion'); }
 }
 // Marque "lu" pour l'utilisateur courant (pas de mise à jour inutile).
-function convMarkSeen(cid,data){ if(!curProfile)return; const seen=(data&&data.seen)?data.seen:{}; seen[curProfile.uid]=Date.now();
-  db.collection('conversations').doc(cid).update({seen}).catch(()=>{}); }
+function convMarkSeen(cid,data){ if(!curProfile)return; const seen=Object.assign({}, (data&&data.seen)?data.seen:{});
+  seen[curProfile.uid]=Date.now();
+  db.collection('conversations').doc(cid).update({seen}).catch(()=>{});
+  // Mise à jour locale immédiate : le badge « non-lu » disparaît sans attendre le snapshot.
+  const c=convCache.find(x=>x.id===cid); if(c){ c.seen=seen;
+    msgUnread=convCache.reduce((s,x)=>s+unreadOf(x),0);
+    if(!chatIsOpen() && view==='msg') shell(); } }
 function convBubbles(c){ const me=curProfile?curProfile.uid:null; const msgs=(c&&c.msgs)||[];
   if(!msgs.length) return `<p class="muted center" style="padding:30px 0">Dites bonjour 👋</p>`;
   let lastDay=''; let out='';
   msgs.forEach(m=>{ const day=new Date(m.time).toDateString();
     if(day!==lastDay){ out+=`<div class="daysep">${new Date(m.time).toLocaleDateString('fr-FR',{weekday:'long',day:'numeric',month:'long'})}</div>`; lastDay=day; }
     const mine=m.uid===me;
-    out+=`<div class="bubble ${mine?'me':'them'}">${esc(m.text)}<span class="bt">${mine?'vous':esc(m.name||'')} · ${timeago(m.time)}</span></div>`; });
+    out+=`<div class="bubble ${mine?'me':'them'}">${m.img?`<img src="${esc(m.img)}" style="max-width:190px;max-height:240px;border-radius:12px;display:block">`:''}${m.text&&!m.img?esc(m.text):''}${m.text&&m.img?`<div style="font-size:10px;opacity:.8;margin-top:2px">${esc(m.text)}</div>`:''}<span class="bt">${mine?'vous':esc(m.name||'')} · ${timeago(m.time)}</span></div>`; });
   return out; }
 // Ouverture : affiche l'écran de chat une fois, puis met à jour UNIQUEMENT la
 // zone des bulles (on ne re-rend jamais le champ de saisie => pas de perte).
@@ -690,13 +700,16 @@ async function openConv(cid){ if(!curProfile) return openAuth();
   const ref=db.collection('conversations').doc(cid);
   const d=await ref.get(); if(!d.exists) return;
   _convData=d.data(); _activeCid=cid; _convRef=ref;
+  var _sh=document.querySelector('.shell'); if(_sh)_sh.classList.add('nopad');
   convMarkSeen(cid,_convData);
   const o=otherName(_convData); const name=esc(o?o.name:'Vendeur');
   renderApp(`<div class="chatHead"><button class="btn ghost sm" onclick="closeConv()">←</button>
     <div class="grow"><b>${name}</b><div class="muted" style="font-size:11px">🛍️ ${esc(_convData.itemTitle||'')}</div></div>
     <span class="badge">Vérifié</span></div>
     <div class="chatBox" id="convSc">${convBubbles(_convData)}</div>
-    <div class="chatInput"><input id="msgText" class="input" autocomplete="off" placeholder="Écris un message…" onkeydown="if(event.key==='Enter'){sendMsg();event.preventDefault();}">
+    <div class="chatInput"><input type="file" id="chatFile" accept="image/*" style="display:none" onchange="chatOnPhoto(this)">
+    <button class="sendBtn" style="background:linear-gradient(135deg,#FB8B24,#F07A1E)" title="Envoyer une photo" onclick="document.getElementById('chatFile').click()">📷</button>
+    <input id="msgText" class="input" autocomplete="off" placeholder="Écris un message…" onkeydown="if(event.key==='Enter'){sendMsg();event.preventDefault();}">
     <button class="sendBtn" onclick="sendMsg()">➤</button></div>`);
   scrollConv();
   if(chatUnsub)chatUnsub();
@@ -711,17 +724,30 @@ let _convRef=null;
 function convScroller(){return document.getElementById('convSc');}
 function convAtBottom(){ const b=convScroller(); if(!b)return true; return b.scrollHeight-b.scrollTop-b.clientHeight<40; }
 function scrollConv(){ setTimeout(()=>{const b=convScroller(); if(b)b.scrollTop=b.scrollHeight;},20); }
-function closeConv(){ if(chatUnsub)chatUnsub(); chatUnsub=null; _activeCid=null; _convData=null; _convRef=null; view='msg';shell(); }
+function closeConv(){ if(chatUnsub)chatUnsub(); chatUnsub=null; _activeCid=null; _convData=null; _convRef=null;
+  var _sh=document.querySelector('.shell'); if(_sh)_sh.classList.remove('nopad'); view='msg';shell(); }
+let _chatImg=null;
+// Photo choisie dans le chat : compression puis envoi.
+function chatOnPhoto(inp){ const f=inp.files&&inp.files[0]; inp.value=''; if(!f||!_activeCid) return;
+  const r=new FileReader(); r.onload=()=>{ const img=new Image();
+    img.onload=()=>{ const max=640; let m=Math.min(1,max/Math.max(img.width,img.height));
+      const cv=document.createElement('canvas'); cv.width=Math.max(1,Math.round(img.width*m)); cv.height=Math.max(1,Math.round(img.height*m));
+      cv.getContext('2d').drawImage(img,0,0,cv.width,cv.height); _chatImg=cv.toDataURL('image/jpeg',.72); sendMsg(); };
+    img.src=r.result; }; r.readAsDataURL(f); }
 async function sendMsg(){ const inp=document.getElementById('msgText'); const txt=inp?inp.value.trim():'';
-  if(!txt||!_activeCid) return;
-  if(inp) inp.value='';
-  const msg={uid:curProfile.uid,name:curProfile.name,text:txt,time:Date.now()};
+  const img=_chatImg; if((!txt&&!img)||!_activeCid) return;
+  if(inp) inp.value=''; _chatImg=null;
+  const msg={uid:curProfile.uid,name:curProfile.name,time:Date.now()};
+  msg.text = img? (txt||'📷 Photo') : txt;
+  if(img) msg.img=img;
   try{
     // Ajout ATOMIQUE côté serveur (arrayUnion) : évite la perte de messages en
     // cas d'envoi simultané par les deux interlocuteurs (bug corrigé).
     const fv=firebase.firestore.FieldValue;
-    await _convRef.update({msgs:fv.arrayUnion(msg),lastAt:Date.now(),lastMsg:txt});
-  }catch(e){ console.error('CHAT_OPEN_ERR', e && e.code, e && e.message); toast('❌ Envoi impossible'); if(inp)inp.value=txt; }
+    await _convRef.update({msgs:fv.arrayUnion(msg),lastAt:Date.now(),lastMsg:msg.text});
+    // Marque lu immédiatement après l'envoi (badge non-lu ne reste pas actif).
+    convMarkSeen(_activeCid,_convData);
+  }catch(e){ console.error('CHAT_OPEN_ERR', e && e.code, e && e.message); toast('❌ Envoi impossible'); if(inp&&txt)inp.value=txt; _chatImg=img; }
 }
 /* ============== TRANSACTION SÉCURISÉE ============== */
 function startContact(id){let l=allListings.find(x=>x.id===id);if(!l)return;
@@ -758,6 +784,7 @@ async function confirmTx(id,who){let ref=db.collection('transactions').doc(id);l
  if(t.validBuyer&&t.validSeller)t.status='done';
  await ref.update({validBuyer:t.validBuyer,validSeller:t.validSeller,status:t.status,updatedAt:Date.now()});
  closeAll();if(t.status==='done'){toast('🎉 Transaction terminée !');}else{toast('Validation enregistrée ✅');}
+ if(view==='sell'||view==='home') shell();
  view='sell';shell();}
 
 /* ============== PROFIL / ADMIN ============== */
@@ -765,7 +792,21 @@ function profileV(){if(!curProfile)return `<div class="center cardp" style="padd
  return `<div class="hdr"><h2>Mon compte</h2></div><div style="padding:4px 12px">
   <div class="listItem"><div class="av">${esc((curProfile.name||'?')[0])}</div><div class="grow"><b>${esc(curProfile.name)} ${isAdmin()?'<span class="badge">ADMIN</span>':''}</b><br><span class="muted">${esc(curProfile.email)}</span></div><span class="badge">Vérifié</span></div>
   <div class="box"><b>📍 Marché</b><p class="muted">${esc(curProfile.country||'')} · ${esc(curProfile.city||'')}</p></div>
+  <div class="box"><b>📱 WhatsApp / téléphone</b><p class="muted">En cas d'achat, les intéressés pourront te joindre directement sur WhatsApp.</p>
+    <div style="display:flex;gap:8px;align-items:center"><input id="profWa" class="input" style="margin:0;flex:1" value="${esc(curProfile.wa||'')}" placeholder="Ex : +225 07 00 00 00 00" inputmode="tel"><button class="btn g sm" onclick="saveWa()">Enregistrer</button></div></div>
   <button class="btn ghost" onclick="logout()">Se déconnecter</button></div>`;}
+
+// Enregistre / met à jour mon numéro WhatsApp (champ `wa` du profil).
+async function saveWa(){ if(!curProfile)return; const v=document.getElementById('profWa').value.replace(/[^0-9+ ]/g,'').trim();
+  if(v && v.replace(/[^0-9]/g,'').length<7) return toast('Numéro invalide');
+  try{ await db.collection('users').doc(curProfile.uid).update({wa:v}); }
+  catch(e){ return toast('❌ '+e.message); }
+  curProfile={...curProfile,wa:v}; toast(v?'✅ WhatsApp enregistré':'WhatsApp retiré'); view='me';shell(); }
+// Affiche le bouton « Contacter sur WhatsApp » quand le vendeur a un numéro.
+async function loadDetWa(sid){ try{ const seller=await getSeller(sid);
+  const ph=(seller&&(seller.wa||seller.phone))||''; const el=document.getElementById('detWa'); if(!el)return;
+  const clean=String(ph).replace(/[^0-9]/g,''); if(clean.length<8){ el.style.display='none'; return; }
+  el.style.display=''; el.href='https://wa.me/'+clean+'?text='+encodeURIComponent('Bonjour, je suis intéressé par votre article sur Hametkro. Est-il toujours disponible ?'); }catch(e){} }
 async function logout(){try{await auth.signOut();}catch(_){}stopPresence();view='home';shell();}
 function adminV(){if(!isAdmin())return profileV();
  let done=txCache.filter(t=>t.status==='done');let comm=done.reduce((a,t)=>a+(t.commission||0),0);let disp=txCache.filter(t=>t.status==='dispute');
