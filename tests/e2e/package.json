@@ -1,0 +1,10 @@
+{
+  "name": "hametkro-e2e",
+  "private": true,
+  "description": "Tests E2E du chat et de la presence (Playwright, navigateur headless, app en production)",
+  "scripts": {
+    "test:chat": "node e2e_chat.js",
+    "test:presence": "node e2e_presence.js"
+  },
+  "devDependencies": { "playwright": "^1.45.0" }
+}
