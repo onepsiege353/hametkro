@@ -276,6 +276,9 @@ function isAdmin(){return curProfile&&curProfile.role==='admin'}
 let view='home', catF='all', q='', allListings=[];
 function boot(){ shell(); }
 function shell(){
+  // Si un fil de discussion est affiché en plein écran, on ne ré-affiche pas
+  // le shell à cause d'un snapshot en arrière-plan (bug de sortie du chat).
+  if(chatIsOpen()) return;
   let body = view==='home'?homeV(): view==='sell'?sellV(): view==='msg'?messagesV(): view==='me'?profileV(): view==='admin'?adminV(): homeV();
   let top = curProfile? `<div class="logo grow"><b>hamet</b><i>kro</i><small>${esc(curProfile.country||"Côte d'Ivoire")} ${(curProfile.countryCode==='CI'||!curProfile.countryCode)?'🇨🇮':'🌍'} · ${esc(curProfile.city||'')}</small></div>
       <div style="display:flex;align-items:center;gap:10px">
@@ -497,20 +500,26 @@ async function publish(pid){let t=val(pid+'_t').trim(),p=parseFloat(val(pid+'_p'
 
 /* ============== MESSAGERIE (chat acheteur/vendeur) ============== */
 // Le chat est stocké dans la collection `conversations`. Les messages vivent
-// dans le champ `msgs` du document (tableau), ce qui respecte les règles
-// Firestore déjà publiées : lecture/écriture réservées aux participants.
-let convCache=[], msgUnread=0, chatUnsub=null, activeConv=null;
+// dans le champ `msgs` du document (tableau). Respecte les règles Firestore
+// publiées : la lecture/écriture d'une conversation est réservée à ses 2
+// participants (champ `participantIds`).
+// `_activeCid` != null signale qu'un fil de discussion est affiché en plein
+// écran : tous les snapshots "globaux" (listings, transactions, conversations)
+// DOIVENT alors ignorer leur ré-affichage pour ne pas éjecter l'utilisateur du
+// chat (bug corrigé).
+let convCache=[], msgUnread=0, chatUnsub=null, _activeCid=null, _convData=null;
 function convIdKey(a,b,item){return [a,b].sort().join('__')+'__'+item;}
-function otherName(c){ return curProfile && c.participants.find(p=>p.uid!==curProfile.uid); }
-function mySeen(c){return c.seen && curProfile ? (c.seen[curProfile.uid]||0):0;}
-function unreadOf(c){ if(!curProfile)return 0; const s=mySeen(c); return (c.msgs||[]).filter(m=>m.uid!==curProfile.uid && m.time>s).length; }
+function otherName(c){ return curProfile && (c.participants||[]).find(p=>p.uid!==curProfile.uid); }
+function mySeen(c){return c&&c.seen&&curProfile ? (c.seen[curProfile.uid]||0):0;}
+function unreadOf(c){ if(!curProfile)return 0; const s=mySeen(c); return ((c.msgs||[]).filter(m=>m.uid!==curProfile.uid&&m.time>s)).length; }
+function chatIsOpen(){return !!_activeCid;}
 // Charge mes conversations (temps réel) une fois connecté.
-function listenConvs(){ auth.onAuthStateChanged(u=>{ if(chatUnsub)chatUnsub(); convCache=[]; msgUnread=0;
-  if(!u){ if(activeConv){} activeConv=null; if(view==='msg')boot(); return; }
+function listenConvs(){ auth.onAuthStateChanged(u=>{ if(chatUnsub)chatUnsub(); chatUnsub=null; convCache=[]; msgUnread=0; _activeCid=null;
+  if(!u){ if(view==='msg'||view==='home')boot(); return; }
   chatUnsub=db.collection('conversations').where('participantIds','array-contains',u.uid).onSnapshot(snap=>{
     convCache=snap.docs.map(d=>d.data());
     msgUnread=convCache.reduce((s,c)=>s+unreadOf(c),0);
-    if(view==='msg'||view==='home')boot();
+    if(!chatIsOpen() && (view==='msg'||view==='home'))boot();
   }); }); }
 // Liste mes conversations (onglet Messages)
 function messagesV(){ if(!curProfile) return `<div class="hdr"><h2>Messages</h2></div><div class="center cardp" style="padding:60px 24px"><div style="font-size:60px">💬</div><h2>Ta messagerie</h2><p class="muted">Connecte-toi pour discuter avec les vendeurs.</p><button class="btn g" onclick="openAuth()">Créer un compte / se connecter</button></div>`;
@@ -518,12 +527,13 @@ function messagesV(){ if(!curProfile) return `<div class="hdr"><h2>Messages</h2>
   const sorted=convCache.slice().sort((a,b)=>(b.lastAt||0)-(a.lastAt||0));
   return `<div class="hdr"><h2>Messages</h2>${msgUnread?`<span class="badge" style="background:var(--sang);margin-left:8px">${msgUnread} non-lus</span>`:''}</div>
    <div style="padding:4px 12px 40px">${sorted.map(c=>{const o=otherName(c);const u=unreadOf(c);
+     const last=(c.msgs&&c.msgs.length)?c.msgs[c.msgs.length-1]:null;
      return `<div class="chatItem" onclick="openConv('${c.id}')">
       <div class="av" style="background:linear-gradient(135deg,#FCE8D6,#E5F4EA)">🛍️</div>
       <div class="grow"><div style="display:flex;justify-content:space-between;align-items:center">
         <b style="font-size:14px">${esc(o?o.name:'Vendeur')}</b><span class="muted" style="font-size:10px">${timeago(c.lastAt)}</span></div>
         <div style="font-size:12px;color:var(--grn);font-weight:600">${esc(c.itemTitle||'')}</div>
-        <div style="display:flex;justify-content:space-between;align-items:center"><span class="muted" style="font-size:12px">${esc((c.msgs&&c.msgs.length)? (c.msgs[c.msgs.length-1].uid===curProfile.uid?'Vous : ':'')+c.msgs[c.msgs.length-1].text : 'Nouvelle discussion')}</span>
+        <div style="display:flex;justify-content:space-between;align-items:center"><span class="muted" style="font-size:12px">${esc(last?(last.uid===curProfile.uid?'Vous : ':'')+last.text:'Nouvelle discussion')}</span>
         ${u?`<span style="background:var(--org);color:#fff;font-size:9px;font-weight:800;border-radius:50%;min-width:17px;height:17px;display:flex;align-items:center;justify-content:center;padding:0 3px">${u}</span>`:''}</div></div>
       </div>`;}).join('')}</div>`; }
 // Ouvre / crée une conversation avec le vendeur d'une annonce.
@@ -533,52 +543,66 @@ async function openChatFromListing(id){ if(!curProfile) return openAuth();
   const other=l.sellerId, otherNm=l.sellerName||'Vendeur';
   const cid=convIdKey(curProfile.uid,other,id);
   const ref=db.collection('conversations').doc(cid);
-  const d=await ref.get();
-  if(!d.exists){
-    await ref.set({id:cid,participantIds:[curProfile.uid,other],
-      participants:[{uid:curProfile.uid,name:curProfile.name},{uid:other,name:otherNm}],
-      itemId:id,itemTitle:l.t,msgs:[],lastAt:Date.now(),seen:{},createdAt:Date.now()});
-  }
-  openConv(cid);
+  try{
+    const d=await ref.get();
+    if(!d.exists){
+      await ref.set({id:cid,participantIds:[curProfile.uid,other].sort(),
+        participants:[{uid:curProfile.uid,name:curProfile.name},{uid:other,name:otherNm}],
+        itemId:id,itemTitle:l.t,msgs:[],lastAt:Date.now(),seen:{},createdAt:Date.now()});
+    }
+    await openConv(cid);
+  }catch(e){ toast('❌ Impossible d\'ouvrir la discussion'); }
 }
+// Marque "lu" pour l'utilisateur courant (pas de mise à jour inutile).
+function convMarkSeen(cid,data){ if(!curProfile)return; const seen=(data&&data.seen)?data.seen:{}; seen[curProfile.uid]=Date.now();
+  db.collection('conversations').doc(cid).update({seen}).catch(()=>{}); }
+function convBubbles(c){ const me=curProfile?curProfile.uid:null; const msgs=(c&&c.msgs)||[];
+  if(!msgs.length) return `<p class="muted center" style="padding:30px 0">Dites bonjour 👋</p>`;
+  let lastDay=''; let out='';
+  msgs.forEach(m=>{ const day=new Date(m.time).toDateString();
+    if(day!==lastDay){ out+=`<div class="daysep">${new Date(m.time).toLocaleDateString('fr-FR',{weekday:'long',day:'numeric',month:'long'})}</div>`; lastDay=day; }
+    const mine=m.uid===me;
+    out+=`<div class="bubble ${mine?'me':'them'}">${esc(m.text)}<span class="bt">${mine?'vous':esc(m.name||'')} · ${timeago(m.time)}</span></div>`; });
+  return out; }
+// Ouverture : affiche l'écran de chat une fois, puis met à jour UNIQUEMENT la
+// zone des bulles (on ne re-rend jamais le champ de saisie => pas de perte).
 async function openConv(cid){ if(!curProfile) return openAuth();
-  const ref=db.collection('conversations').doc(cid); const d=await ref.get();
-  if(!d.exists) return; const c=d.data(); activeConv=c;
-  // marque comme lu
-  const seen=c.seen||{}; seen[curProfile.uid]=Date.now();
-  await ref.update({seen}).catch(()=>{});
-  renderConv(); _convRef=ref;
+  const ref=db.collection('conversations').doc(cid);
+  const d=await ref.get(); if(!d.exists) return;
+  _convData=d.data(); _activeCid=cid; _convRef=ref;
+  convMarkSeen(cid,_convData);
+  const o=otherName(_convData); const name=esc(o?o.name:'Vendeur');
+  renderApp(`<div class="chatHead"><button class="btn ghost sm" onclick="closeConv()">←</button>
+    <div class="grow"><b>${name}</b><div class="muted" style="font-size:11px">🛍️ ${esc(_convData.itemTitle||'')}</div></div>
+    <span class="badge">Vérifié</span></div>
+    <div class="chatBox" id="convSc">${convBubbles(_convData)}</div>
+    <div class="chatInput"><input id="msgText" class="input" autocomplete="off" placeholder="Écris un message…" onkeydown="if(event.key==='Enter'){sendMsg();event.preventDefault();}">
+    <button class="sendBtn" onclick="sendMsg()">➤</button></div>`);
+  scrollConv();
   if(chatUnsub)chatUnsub();
-  chatUnsub=ref.onSnapshot(snap=>{ if(!snap.exists)return; activeConv=snap.data(); renderConv(); const s=snap.data().seen||{}; if(!s[curProfile.uid]){s[curProfile.uid]=Date.now();ref.update({seen:s}).catch(()=>{});} });
-  setTimeout(()=>{const b=document.getElementById('convSc'); if(b)b.scrollTop=b.scrollHeight;},60);
+  chatUnsub=ref.onSnapshot(snap=>{ if(!snap.exists)return; const prev=_convData; _convData=snap.data();
+    const wasAtBottom=convAtBottom();
+    const sc=document.getElementById('convSc'); if(sc) sc.innerHTML=convBubbles(_convData);
+    if(convAtBottom()===false && (prev&&(_convData.msgs||[]).length>(prev.msgs||[]).length)) { /* message entrant en bas de page */ }
+    if(wasAtBottom||prev==null) scrollConv();
+    convMarkSeen(cid,_convData); });
 }
 let _convRef=null;
-function closeConv(){ if(chatUnsub)chatUnsub(); chatUnsub=null; activeConv=null; view='msg';shell(); }
-function renderConv(){ const c=activeConv; if(!c)return;
-  const o=otherName(c); const name=esc(o?o.name:'Vendeur');
-  const msgs=c.msgs||[];
-  let html=msgs.map(m=>{const me=m.uid===curProfile.uid;
-    return `<div class="bubble ${me?'me':'them'}">${esc(m.text)}<span class="bt">${me?'vous':esc(m.name||'')} · ${timeago(m.time)}</span></div>`;}).join('')
-    ||`<p class="muted center" style="padding:30px 0">Dites bonjour 👋</p>`;
-  renderApp(`<div class="chatHead"><button class="btn ghost sm" onclick="closeConv()">←</button>
-    <div class="grow"><b>${name}</b><div class="muted" style="font-size:11px">🛍️ ${esc(c.itemTitle||'')}</div></div>
-    <span class="badge">Vérifié</span></div>
-    <div class="chatBox" id="convSc">${html}</div>
-    <div class="chatInput"><input id="msgText" class="input" placeholder="Écris un message…" onkeydown="if(event.key==='Enter')sendMsg()">
-    <button class="sendBtn" onclick="sendMsg()">➤</button></div>`);
-  setTimeout(()=>{const b=document.getElementById('convSc'); if(b)b.scrollTop=b.scrollHeight;},20);
-}
-async function sendMsg(){ const inp=document.getElementById('msgText'); const txt=(inp?inp.value:'').trim();
-  if(!txt||!activeConv) return; if(chatUnsub)chatUnsub();
-  const ref=_convRef||db.collection('conversations').doc(activeConv.id);
+function convScroller(){return document.getElementById('convSc');}
+function convAtBottom(){ const b=convScroller(); if(!b)return true; return b.scrollHeight-b.scrollTop-b.clientHeight<40; }
+function scrollConv(){ setTimeout(()=>{const b=convScroller(); if(b)b.scrollTop=b.scrollHeight;},20); }
+function closeConv(){ if(chatUnsub)chatUnsub(); chatUnsub=null; _activeCid=null; _convData=null; _convRef=null; view='msg';shell(); }
+async function sendMsg(){ const inp=document.getElementById('msgText'); const txt=inp?inp.value.trim():'';
+  if(!txt||!_activeCid) return;
+  if(inp) inp.value='';
   const msg={uid:curProfile.uid,name:curProfile.name,text:txt,time:Date.now()};
-  const cur=activeConv; const msgs=(cur.msgs||[]).concat(msg);
-  const seen=cur.seen||{}; seen[curProfile.uid]=Date.now();
-  await ref.update({msgs,lastAt:Date.now(),lastMsg:txt,seen}).catch(()=>{});
-  if(inp)inp.value='';
-  chatUnsub=ref.onSnapshot(snap=>{ if(!snap.exists)return; activeConv=snap.data(); renderConv(); });
+  try{
+    // Ajout ATOMIQUE côté serveur (arrayUnion) : évite la perte de messages en
+    // cas d'envoi simultané par les deux interlocuteurs (bug corrigé).
+    const fv=firebase.firestore.FieldValue;
+    await _convRef.update({msgs:fv.arrayUnion(msg),lastAt:Date.now(),lastMsg:txt});
+  }catch(e){ toast('❌ Envoi impossible'); if(inp)inp.value=txt; }
 }
-
 /* ============== TRANSACTION SÉCURISÉE ============== */
 function startContact(id){let l=allListings.find(x=>x.id===id);if(!l)return;
  openSheet(`<div class="row" style="justify-content:space-between;padding:12px 0"><b>Contacter ${esc(l.sellerName)}</b><span style="cursor:pointer;font-size:20px" onclick="closeAll()">✕</span></div>
@@ -635,9 +659,9 @@ async function resolve(id){let ref=db.collection('transactions').doc(id);let d=a
 
 /* ============== ÉCOUTE DES DONNÉES (Firestore temps réel) ============== */
 let txCache=[], _deepDone=false;
-function listenListings(){db.collection('listings').orderBy('time','desc').onSnapshot(snap=>{allListings=snap.docs.map(d=>d.data());boot();if(!_deepDone){_deepDone=true;setTimeout(openListingFromURL,200);}},err=>{renderApp(`<div class="load"><div style="font-size:46px">⚠️</div><div>Impossible de lire les annonces.<br><span class="muted">Vérifie que Firestore est activé et les règles publiées.</span></div><div>${esc(err&&err.message||'')}</div></div>`);});}
+function listenListings(){db.collection('listings').orderBy('time','desc').onSnapshot(snap=>{allListings=snap.docs.map(d=>d.data());if(!chatIsOpen())boot();if(!_deepDone){_deepDone=true;setTimeout(openListingFromURL,200);}},err=>{renderApp(`<div class="load"><div style="font-size:46px">⚠️</div><div>Impossible de lire les annonces.<br><span class="muted">Vérifie que Firestore est activé et les règles publiées.</span></div><div>${esc(err&&err.message||'')}</div></div>`);});}
 function listenTx(){auth.onAuthStateChanged(u=>{ if(!u){txCache=[];notifsCache=[];notifUnread=0;return;}
-  db.collection('transactions').where('participants','array-contains',u.uid).onSnapshot(snap=>{txCache=snap.docs.map(d=>d.data());buildNotifs(u.uid);if(view==='sell'||view==='admin'||view==='home')boot();}); });}
+  db.collection('transactions').where('participants','array-contains',u.uid).onSnapshot(snap=>{txCache=snap.docs.map(d=>d.data());buildNotifs(u.uid);if(!chatIsOpen()&&(view==='sell'||view==='admin'||view==='home'))boot();}); });}
 // Reconstruit aussi les notifs au chargement initial d'un utilisateur connecté.
 function afterAuthRebuild(u){ if(u) setTimeout(()=>buildNotifs(u.uid),400); }
 
