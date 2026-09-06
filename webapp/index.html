@@ -634,27 +634,43 @@ async function doReportConv(){ const reason=val('rep_reason')||'Autre';
   try{ await db.collection('reports').add({cid:_activeCid,reportedBy:curProfile.uid,reporterName:curProfile.name,otherId:otherUid(_convData),otherName:(otherName(_convData)||{}).name||'?',reason,note:val('rep_note'),itemId:(_convData&&_convData.itemId)||'',createdAt:Date.now()}); closeAll(); toast('🚩 Signalement envoyé — merci'); }catch(e){ toast('❌ '+(e&&e.message||'erreur')); } }
 /* ====== AVATAR / PHOTO DE PROFIL (compressé, stocké sur le profil) ====== */
 function readImg(file){ return new Promise((res)=>{ const r=new FileReader(); r.onload=()=>res(r.result); r.readAsDataURL(file); }); }
-async function imageToDataUrl(file){ let src=await readImg(file); return new Promise((res)=>{ const img=new Image(); img.onload=()=>{ const s=220; let m=Math.min(1,s/Math.max(img.width,img.height)); const cv=document.createElement('canvas'); cv.width=Math.max(1,Math.round(img.width*m)); cv.height=Math.max(1,Math.round(img.height*m)); cv.getContext('2d').drawImage(img,0,0,cv.width,cv.height); res(cv.toDataURL('image/jpeg',.82)); }; img.onerror=()=>res(null); img.src=src; }); }
+async function imageToDataUrl(file,maxSize){ let src=await readImg(file); maxSize=maxSize||220;
+  return new Promise((res)=>{ const img=new Image(); img.onload=()=>{ const s=maxSize; let m=Math.min(1,s/Math.max(img.width,img.height)); const cv=document.createElement('canvas'); cv.width=Math.max(1,Math.round(img.width*m)); cv.height=Math.max(1,Math.round(img.height*m)); cv.getContext('2d').drawImage(img,0,0,cv.width,cv.height); res(cv.toDataURL('image/jpeg',.82)); }; img.onerror=()=>res(null); img.src=src; }); }
 function profAvatar(p,size,emo){ emo=emo||'🛍️'; const s=size||40; if(p&&p.avatar) return `<img src="${esc(p.avatar)}" style="width:${s}px;height:${s}px;border-radius:50%;object-fit:cover;flex:none">`;
   return `<div style="width:${s}px;height:${s}px;border-radius:50%;background:linear-gradient(135deg,var(--org-soft),var(--grn-soft));display:flex;align-items:center;justify-content:center;font-size:${Math.round(s*0.5)}px;flex:none">${emo}</div>`; }
 function editProfileSheet(){ if(!curProfile)return openAuth();
   const p=curProfile; const wa=p.wa||p.phone||'';
-  openSheet(`<div class="row" style="justify-content:space-between;padding:12px 0"><h2 style="margin:0;font-size:18px">👤 Mon profil</h2><span style="cursor:pointer;font-size:20px" onclick="closeAll()">✕</span></div>
-   <div style="text-align:center;margin:6px 0 12px;position:relative;width:96px;margin-left:auto;margin-right:auto"><div id="ep_avatar">${profAvatar(curProfile,96,'👤')}</div><div title="Changer ma photo" onclick="document.getElementById('ep_file').click()" style="position:absolute;right:-6px;bottom:4px;background:var(--org);color:#fff;width:30px;height:30px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:14px;cursor:pointer;border:2px solid #fff;box-shadow:0 3px 8px rgba(0,0,0,.25)">📷</div></div>
+  openSheet(`<div class="row" style="justify-content:space-between;padding:12px 0"><h2 style="margin:0;font-size:18px">👤 Mon profil vendeur</h2><span style="cursor:pointer;font-size:20px" onclick="closeAll()">✕</span></div>
+   <div style="border-radius:14px;overflow:hidden;border:1px solid var(--line);position:relative;margin:6px 0 4px"><div id="ep_cover" style="height:120px;background:linear-gradient(135deg,#1C9E63,#0E7A44);display:flex;align-items:center;justify-content:center;font-size:30px">${p.cover?`<img src="${esc(p.cover)}" style="width:100%;height:100%;object-fit:cover">`:'🎨'}</div>
+     <div title="Changer la couverture" onclick="document.getElementById('ep_coverf').click()" style="position:absolute;left:10px;bottom:10px;background:rgba(0,0,0,.5);color:#fff;padding:6px 10px;border-radius:9px;font-size:11px;cursor:pointer">🖼️ Couverture</div></div>
+   <input type="file" id="ep_coverf" accept="image/*" style="display:none" onchange="epCoverPick(this)">
+   <div style="display:flex;align-items:center;gap:12px;margin:8px 0 14px">
+     <div style="position:relative;flex:none"><div id="ep_avatar" style="width:86px;height:86px;border-radius:50%;overflow:hidden;border:3px solid #fff;box-shadow:0 4px 12px rgba(0,0,0,.2);background:#eee">${p.avatar?`<img src="${esc(p.avatar)}" style="width:100%;height:100%;object-fit:cover">`:`<div style="width:86px;height:86px;display:flex;align-items:center;justify-content:center;font-size:34px">👤</div>`}</div>
+       <div title="Changer ma photo" onclick="document.getElementById('ep_file').click()" style="position:absolute;right:-4px;bottom:-2px;background:var(--org);color:#fff;width:30px;height:30px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:14px;cursor:pointer;border:2px solid #fff;box-shadow:0 3px 8px rgba(0,0,0,.25)">📷</div></div>
+     <div class="grow"><div class="muted" style="font-size:12px">Ajoute une <b>photo</b> + une <b>couverture</b> pour rassurer et marquer les esprits.</div></div>
+   </div>
    <input type="file" id="ep_file" accept="image/*" style="display:none" onchange="epAvatarPick(this)">
    <label>Nom complet</label><input id="ep_name" class="input" value="${esc(p.name||'')}">
-   <div class="row" style="align-items:flex-start"><div class="grow"><label>WhatsApp / téléphone</label><input id="ep_wa" class="input" value="${esc(wa)}" inputmode="tel" placeholder="+225…"></div><div style="width:118px"><label>Ville</label><input id="ep_city" class="input" value="${esc(p.city||'')}"></div></div>
-   <label>Bio / « à propos » (ce que tu vends, dispo, zone)</label><textarea id="ep_bio" class="input" rows="3">${esc(p.bio||'')}</textarea>
-   <div class="info">🛡️ Une photo + un numéro vérifié augmentent la confiance des acheteurs et limitent les arnaques.</div>
+   <div class="row" style="align-items:flex-start"><div class="grow"><label>WhatsApp / téléphone</label><input id="ep_wa" class="input" value="${esc(wa)}" inputmode="tel" placeholder="+225…"></div><div style="width:112px"><label>Ville</label><input id="ep_city" class="input" value="${esc(p.city||'')}"></div></div>
+   <label>Zone / lieu de remise (où tu rencontres tes acheteurs)</label><input id="ep_zone" class="input" value="${esc(p.zone||'')}" placeholder="Ex : Cocody Riviera / Plateau">
+   <label>Bio / « à propos » (ce que tu vends, dispo…)</label><textarea id="ep_bio" class="input" rows="2">${esc(p.bio||'')}</textarea>
+   <div class="row"><div class="grow"><label>Facebook (pseudo)</label><input id="ep_fb" class="input" value="${esc(p.fb||'')}" placeholder="tonpseudo"></div><div class="grow"><label>Instagram (pseudo)</label><input id="ep_ig" class="input" value="${esc(p.ig||'')}" placeholder="tonpseudo"></div></div>
+   <div class="row"><div class="grow"><label>TikTok (pseudo)</label><input id="ep_tk" class="input" value="${esc(p.tk||'')}" placeholder="tonpseudo"></div><div class="grow"><label>Mail de contact</label><input id="ep_email2" class="input" value="${esc(p.email||'')}" placeholder="toi@…"></div></div>
+   <div class="info">🛡️ Photo + numéro vérifié + réseau augmentent la confiance et limitent les arnaques. Ta ville et ta zone aident à prévoir une remise en lieu sûr.</div>
    <button class="btn g" onclick="saveProfileEdit()">Enregistrer mon profil</button>`); }
 function epAvatarPick(inp){ const f=inp.files&&inp.files[0]; inp.value=''; if(!f)return;
-  imageToDataUrl(f).then(d=>{ if(!d)return toast('Image invalide'); _avatarTmp=d;
-    const el=document.getElementById('ep_avatar'); if(el) el.innerHTML=`<img src="${esc(d)}" style="width:96px;height:96px;border-radius:50%;object-fit:cover">`; }); }
-let _avatarTmp=null;
+  imageToDataUrl(f,180).then(d=>{ if(!d)return toast('Image invalide'); _avatarTmp=d;
+    const el=document.getElementById('ep_avatar'); if(el) el.innerHTML=`<img src="${esc(d)}" style="width:100%;height:100%;object-fit:cover">`; }); }
+function epCoverPick(inp){ const f=inp.files&&inp.files[0]; inp.value=''; if(!f)return;
+  imageToDataUrl(f,900,true).then(d=>{ if(!d)return toast('Image invalide'); _coverTmp=d;
+    const el=document.getElementById('ep_cover'); if(el) el.innerHTML=`<img src="${esc(d)}" style="width:100%;height:100%;object-fit:cover">`; }); }
+let _avatarTmp=null,_coverTmp=null;
 async function saveProfileEdit(){ const p=curProfile; const name=val('ep_name').trim(); if(name.length<2)return toast('Nom requis');
   const wa=val('ep_wa').replace(/[^0-9+ ]/g,'').trim(); const city=val('ep_city').trim(); const bio=val('ep_bio').trim();
+  const zone=val('ep_zone').trim(); const fb=val('ep_fb').trim().replace(/^@/,''); const ig=val('ep_ig').trim().replace(/^@/,''); const tk=val('ep_tk').trim().replace(/^@/,'');
   const up={name}; if(wa){ const digits=wa.replace(/[^0-9]/g,''); if(digits.length<7)return toast('Numéro invalide'); up.wa=wa; } else up.wa='';
-  if(city) up.city=city; up.bio=bio; if(_avatarTmp){ up.avatar=_avatarTmp; _avatarTmp=null; }
+  if(city) up.city=city; up.bio=bio; up.zone=zone; up.fb=fb; up.ig=ig; up.tk=tk;
+  if(_avatarTmp){ up.avatar=_avatarTmp; _avatarTmp=null; } if(_coverTmp){ up.cover=_coverTmp; _coverTmp=null; }
   try{ await db.collection('users').doc(curProfile.uid).update(up); curProfile={...curProfile,...up}; sellerCache[curProfile.uid]=curProfile;
     closeAll(); toast('✅ Profil mis à jour'); view='me';shell(); }catch(e){ console.error('PROF_EDIT',e&&e.code,e&&e.message); toast('❌ '+(e&&e.message||'erreur')); } }
 /* ====== NOTIFICATIONS (Notification API — en arrière-plan/onglet masqué) ====== */
@@ -793,7 +809,16 @@ async function openSeller(sid){ closeAll();
   if(!mine && curProfile && curProfile.uid!==sid){ actions=`<div style="padding:4px 14px"><button class="btn g" onclick="view='home';shell()">💬 Voir ses annonces</button>${waBtn}</div>`; }
   else if(!mine && !curProfile){ actions=`<div style="padding:4px 14px"><button class="btn g" onclick="openAuth()">Se connecter pour contacter</button></div>`; }
   if(mine){ actions=`<div style="padding:4px 14px"><button class="btn ghost" onclick="view='me';shell()">C\'est ton profil</button></div>`; }
-  renderApp(`<div class="topbar"><div class="logo grow"><b>hamet</b><i>kro</i></div><button class="btn g sm" onclick="view='home';shell()">← Accueil</button></div>${head}${sellerItems}${actions}<div style="height:30px"></div>`);
+  // Carte contacts / réseaux / remise
+  let infoRows=''; if(seller&&seller.zone) infoRows+=`<div style="font-size:12.5px;color:var(--grey);padding:2px 0">📍 <b style="color:var(--ink)">Remise :</b> ${esc(seller.zone)}</div>`;
+  if(seller&&seller.email) infoRows+=`<div style="font-size:12.5px;color:var(--grey);padding:2px 0">✉️ ${esc(seller.email)}</div>`;
+  if(seller&&seller.wa) infoRows+=`<div style="font-size:12.5px;color:var(--grey);padding:2px 0">🟢 ${esc(seller.wa)}</div>`;
+  let socIcons='';
+  const socMap=[['fb','Facebook','facebook.com/'],['ig','Instagram','instagram.com/'],['tk','TikTok','tiktok.com/@']];
+  if(seller) socMap.forEach(sm=>{ const v=seller[sm[0]]; if(v) socIcons+=`<a href="https://${sm[2]}${encodeURIComponent(String(v).replace(/^@/,''))}" target="_blank" rel="noopener" style="flex:1;text-align:center;background:#fff;border:1px solid var(--line);border-radius:11px;padding:8px 4px;font-size:11px;color:var(--grn);text-decoration:none">${sm[1]}</a>`; });
+  const contactCard = (infoRows||socIcons)? `<div class="box" style="margin:10px 12px 4px">${infoRows}${socIcons?`<div style="display:flex;gap:8px;margin-top:${infoRows?'6px':'0'};flex-wrap:wrap">${socIcons}</div>`:''}</div>`:'';
+  const coverBanner = seller&&seller.cover ? `<div style="height:140px;overflow:hidden;position:relative"><img src="${esc(seller.cover)}" style="width:100%;height:100%;object-fit:cover"><div style="position:absolute;inset:0;box-shadow:inset 0 -30px 40px -30px rgba(0,0,0,.4)"></div></div>` : '';
+  renderApp(`<div class="topbar"><div class="logo grow"><b>hamet</b><i>kro</i></div><button class="btn g sm" onclick="view='home';shell()">← Accueil</button></div>${coverBanner}${head}${contactCard}${sellerItems}${actions}<div style="height:30px"></div>`);
   document.documentElement.scrollTop=0;
 }
 function detail(id){let l=allListings.find(x=>x.id===id);if(!l)return;
