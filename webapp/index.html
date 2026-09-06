@@ -223,6 +223,13 @@ if ('serviceWorker' in navigator) {
     .grid{padding-bottom:70px}
   }
   @media (min-width:1280px){.grid{grid-template-columns:repeat(auto-fill,minmax(230px,1fr))}}
+  /* ===== Mode app installee (standalone) : degager le menu de la barre systeme ===== */
+  @media (display-mode: standalone), (display-mode: fullscreen) {
+    html,body{height:100%}
+    .shell{min-height:100vh;min-height:100dvh}
+    .nav{bottom:0;padding-bottom:max(env(safe-area-inset-bottom,0px),20px)}
+    .grid{padding-bottom:max(env(safe-area-inset-bottom,0px),20px)}
+  }
 </style>
 </head>
 <body>
