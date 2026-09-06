@@ -808,18 +808,112 @@ async function loadDetWa(sid){ try{ const seller=await getSeller(sid);
   const clean=String(ph).replace(/[^0-9]/g,''); if(clean.length<8){ el.style.display='none'; return; }
   el.style.display=''; el.href='https://wa.me/'+clean+'?text='+encodeURIComponent('Bonjour, je suis intéressé par votre article sur Hametkro. Est-il toujours disponible ?'); }catch(e){} }
 async function logout(){try{await auth.signOut();}catch(_){}stopPresence();view='home';shell();}
-function adminV(){if(!isAdmin())return profileV();
- let done=txCache.filter(t=>t.status==='done');let comm=done.reduce((a,t)=>a+(t.commission||0),0);let disp=txCache.filter(t=>t.status==='dispute');
- return `<div class="hdr"><h2>Admin 📊</h2></div><div style="padding:4px 12px">
-  <div class="statbox"><div class="st"><b>${done.length}</b><span>ventes clôturées</span></div><div class="st"><b style="color:var(--grn)">${fmt(comm)}</b><span>FCFA commission</span></div><div class="st"><b>${disp.length}</b><span>litiges</span></div></div>
-  ${disp.length?`<div class="warn"><b>⚠️ Litiges à arbitrer</b>${disp.map(d=>`<div class="box"><b>${esc(d.itemTitle)}</b> · ${fmt(d.price)} FCFA<br><span class="muted">${esc(d.buyerName)} ↔ ${esc(d.sellerName)}</span><br><button class="btn sm g" onclick="resolve('${d.id}')">Clôturer (résolu)</button></div>`).join('')}</div>`:''}
-  <h3 style="margin:12px 0 4px">Revenus (commissions ${Math.round(COMM_RATE*100)}%)</h3>
-  ${done.length?done.map(t=>`<div class="box" style="display:flex;justify-content:space-between"><div><b>${esc(t.itemTitle)}</b><div class="muted">${esc(t.buyerName)} → ${esc(t.sellerName)}</div></div><div style="text-align:right"><div class="green" style="color:var(--grn);font-weight:800">+${fmt(t.commission)} FCFA</div><div class="muted">${timeago(t.createdAt)}</div></div></div>`).join(''):'<p class="muted">Aucune vente clôturée.</p>'}
+function adminV(){ if(!isAdmin())return profileV();
+  if(admUsers===null||admTx===null) return `<div class="hdr"><h2>Admin 📊</h2></div><div class="load"><div style="font-size:42px">📊</div>Chargement du tableau de bord…</div>`;
+  const users=admUsers||[], tx=admTx||[], now=Date.now(), day=864e5;
+  const accounts=users.length;
+  const new7=users.filter(u=>u.created&&(now-u.created)<7*day).length;
+  const new30=users.filter(u=>u.created&&(now-u.created)<30*day).length;
+  const sellers=new Set((allListings||[]).map(l=>l.sellerId)).size;
+  const canti=(users.filter(u=>u.food&&u.food.name&&!u.food._del)).length;
+  const listings=(allListings||[]).length;
+  const active=(allListings||[]).filter(l=>!l.sold).length;
+  const sold=(allListings||[]).filter(l=>l.sold).length;
+  const buyers=new Set(tx.filter(t=>t.status!=='dispute').map(t=>t.buyerId)).size;
+  const done=tx.filter(t=>t.status==='done');
+  const rev=done.reduce((a,t)=>a+(t.commission||0),0);
+  const disp=tx.filter(t=>t.status==='dispute');
+  const agreed=tx.filter(t=>t.status==='agreed').length;
+  const gmv=tx.reduce((a,t)=>a+(t.price||0),0);
+
+  // Répartition des comptes créés sur les 14 derniers jours (mini-graphique en barres)
+  let hist=[];
+  for(let i=13;i>=0;i--){ const dayStart=now-(i+1)*day, dayEnd=now-i*day;
+    hist.push({d:new Date(dayEnd).getDate()+'/'+(new Date(dayEnd).getMonth()+1),
+      n:users.filter(u=>u.created&&u.created>=dayStart&&u.created<dayEnd).length}); }
+  const hmax=Math.max(1,...hist.map(x=>x.n));
+  const bars=hist.map((x,i)=>`<div style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:flex-end;height:96px;gap:3px">
+    <span style="font-size:9px;font-weight:800;color:var(--grn)">${x.n}</span>
+    <div title="${x.n} compte(s)" style="width:70%;max-width:16px;height:${Math.max(3,Math.round(x.n/hmax*70))}px;border-radius:6px 6px 3px 3px;background:linear-gradient(180deg,#129452,#0E7A44);opacity:${x.n?1:.35}"></div>
+    <span style="font-size:8px;color:var(--grey2)">${x.d}</span></div>`).join('');
+
+  const catCount={}; (allListings||[]).forEach(l=>{ const c=catOf(l.cat).n; catCount[c]=(catCount[c]||0)+1; });
+  const catMax=Math.max(1,...Object.values(catCount));
+  const catRows=Object.entries(catCount).sort((a,b)=>b[1]-a[1]).slice(0,5).map(([k,v])=>
+    `<div style="margin:6px 0"><div class="row"><span style="font-size:12px" class="grow">${esc(k)}</span><b style="font-size:12px">${v}</b></div>
+     <div style="height:7px;background:var(--line);border-radius:6px;margin-top:4px"><div style="height:7px;border-radius:6px;width:${Math.round(v/catMax*100)}%;background:linear-gradient(90deg,#FB8B24,#F07A1E)"></div></div></div>`).join('');
+
+  // Liste des derniers comptes créés
+  const recent=users.slice().sort((a,b)=>(b.created||0)-(a.created||0)).slice(0,7);
+  const recentRows=recent.map(u=>{ const d=new Date(u.created||now); const isF=canti&&u.food&&u.food.name;
+    return `<div class="row" style="padding:8px 0;border-bottom:1px solid var(--line)">
+      <div class="av" style="width:36px;height:36px;font-size:17px;flex:none;background:linear-gradient(160deg,${u.role==='admin'?'#FBEEDC,#FBEEDC':'#E3F3E9,#FBEEDC'})">${u.role==='admin'?'👑':(isF?'🍲':'👤')}</div>
+      <div class="grow" style="min-width:0"><b style="font-size:13px">${esc(u.name||'?')} ${u.role==='admin'?'<span class="badge">ADMIN</span>':''}</b>
+        <div class="muted" style="font-size:10px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(u.email||'')}</div></div>
+      <span class="muted" style="font-size:10px;flex:none">${d.toLocaleDateString('fr-FR',{day:'numeric',month:'short'})}</span></div>`; }).join('');
+
+  // Transactions récentes
+  const recentTx=tx.slice().sort((a,b)=>(b.updatedAt||b.createdAt||0)-(a.updatedAt||a.createdAt||0)).slice(0,6);
+  const txRows=recentTx.length?recentTx.map(t=>{ const st={agreed:['🟠','En cours'],dispute:['🔴','Litige'],done:['🟢','Clôturée']}[t.status]||['⚪',t.status];
+    return `<div class="row" style="padding:8px 0;border-bottom:1px solid var(--line)">
+      <span style="flex:none">${st[0]}</span><div class="grow" style="min-width:0"><b style="font-size:12.5px">${esc(t.itemTitle)}</b>
+      <div class="muted" style="font-size:10px">${esc(t.buyerName)} ↔ ${esc(t.sellerName)} · ${fmt(t.price)} FCFA</div></div>
+      <div style="text-align:right;flex:none"><div style="font-size:11px;font-weight:800;color:${t.status==='done'?'var(--grn)':(t.status==='dispute'?'var(--sang)':'var(--ink)')}">${st[1]}</div><div class="muted" style="font-size:9px">${timeago(t.updatedAt||t.createdAt)}</div></div></div>`; }).join(''):'<p class="muted center" style="padding:14px">Aucune transaction.</p>';
+
+  const kpi=(ic,val,lab,col)=>`<div style="background:#fff;border:1px solid var(--line);border-radius:16px;padding:14px;box-shadow:var(--sh-s)">
+    <div style="display:flex;align-items:center;gap:9px"><div style="width:38px;height:38px;border-radius:12px;background:var(${col});display:flex;align-items:center;justify-content:center;font-size:19px;flex:none">${ic}</div>
+      <div style="min-width:0"><div style="font-size:22px;font-weight:800;line-height:1;letter-spacing:-.5px">${val}</div><div style="font-size:10.5px;color:var(--grey);font-weight:600">${lab}</div></div></div></div>`;
+
+  const litiges= disp.length? `<div class="warn" style="margin-top:10px"><b>⚠️ ${disp.length} litige(s) à arbitrer</b>${disp.map(d=>`<div style="display:flex;align-items:center;gap:8px;margin-top:8px;justify-content:space-between"><span style="font-size:12px">${esc(d.itemTitle)} · ${esc(d.buyerName)} ↔ ${esc(d.sellerName)}</span><button class="btn sm g" onclick="resolve('${d.id}')">Clôturer</button></div>`).join('')}</div>`:'';
+
+  return `<div style="background:linear-gradient(135deg,#0E7A44,#075231);color:#fff;padding:18px 16px 16px;border-radius:0 0 22px 22px">
+    <div class="row"><div style="width:40px;height:40px;border-radius:12px;background:rgba(255,255,255,.18);display:flex;align-items:center;justify-content:center;font-size:20px">📊</div>
+      <div class="grow"><div style="font-size:18px;font-weight:800">Tableau de bord</div><div style="font-size:11px;opacity:.9">Vue d'ensemble Hametkro</div></div>
+      <span style="font-size:10px;background:rgba(255,255,255,.2);padding:4px 9px;border-radius:999px;font-weight:700">${timeago(now)}</span></div></div>
+  <div style="padding:14px 12px 30px">
+   <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+     ${kpi('👥',fmt(accounts),'Comptes créés','grn-soft')}
+     ${kpi('✨',new7,'Nouveaux · 7 j','org-soft')}
+     ${kpi('🛍️',active,'Annonces actives','grn-soft')}
+     ${kpi('🍲',canti,'Cantinières','org-soft')}
+     ${kpi('🤝',done.length,'Ventes clôturées','grn-soft')}
+     ${kpi('💰',fmt(rev),'Commission FCFA','org-soft')}
+     ${kpi('📦',sold,'Articles vendus','grn-soft')}
+     ${kpi('👤',buyers,'Acheteurs uniques','org-soft')}
+   </div>
+   ${litiges}
+   <div style="background:#fff;border:1px solid var(--line);border-radius:16px;padding:14px;margin-top:12px;box-shadow:var(--sh-s)">
+     <div class="row" style="justify-content:space-between"><b style="font-size:14px">📈 Inscriptions · 14 derniers jours</b><span class="muted" style="font-size:10px">${new30} comptes / 30 j</span></div>
+     <div style="display:flex;gap:4px;align-items:flex-end;margin-top:10px;height:96px">${bars}</div></div>
+   <div style="background:#fff;border:1px solid var(--line);border-radius:16px;padding:14px;margin-top:12px;box-shadow:var(--sh-s)">
+     <b style="font-size:14px">🏷️ Annonces par catégorie</b><div style="margin-top:8px">${catRows||'<p class="muted">Aucune annonce.</p>'}</div></div>
+   <div style="background:#fff;border:1px solid var(--line);border-radius:16px;padding:14px;margin-top:12px;box-shadow:var(--sh-s)">
+     <div class="row" style="justify-content:space-between"><b style="font-size:14px">🕒 Derniers comptes</b><span class="muted" style="font-size:10px">${fmt(accounts)} au total · ${sellers} vendeur(s)</span></div>
+     <div style="margin-top:6px">${recentRows}</div></div>
+   <div style="background:#fff;border:1px solid var(--line);border-radius:16px;padding:14px;margin-top:12px;box-shadow:var(--sh-s)">
+     <div class="row" style="justify-content:space-between"><b style="font-size:14px">💳 Transactions récentes</b><span class="muted" style="font-size:10px">${agreed} en cours · ${fmt(gmv)} FCFA GMV</span></div>
+     <div style="margin-top:6px">${txRows}</div></div>
   </div>`;}
 async function resolve(id){let ref=db.collection('transactions').doc(id);let d=await ref.get();let t=d.data();t.status='done';await ref.update({status:'done',updatedAt:Date.now()});view='admin';shell();toast('Litige clôturé ✅');}
 
 /* ============== ÉCOUTE DES DONNÉES (Firestore temps réel) ============== */
 let txCache=[], _deepDone=false;
+let admUsers=null, admTx=null, _admLoaded=false;
+// Charge, pour l'admin, l'ensemble des comptes et transactions (vue globale).
+function listenAdmin(){
+  auth.onAuthStateChanged(u=>{
+    admUsers=[]; admTx=[]; _admLoaded=false;
+    if(!u) return;
+    db.collection('users').doc(u.uid).onSnapshot(me=>{
+      const isAd = me.exists && me.data().role==='admin';
+      if(isAd && !_admLoaded){
+        _admLoaded=true;
+        db.collection('users').onSnapshot(s=>{ admUsers=s.docs.map(d=>d.data()); if(!chatIsOpen()&&view==='admin')shell(); });
+        db.collection('transactions').onSnapshot(s=>{ admTx=s.docs.map(d=>d.data()); if(!chatIsOpen()&&view==='admin')shell(); });
+      } else if(!isAd){ _admLoaded=false; }
+    });
+  });
+}
 function listenListings(){db.collection('listings').orderBy('time','desc').onSnapshot(snap=>{allListings=snap.docs.map(d=>d.data());if(!chatIsOpen())boot();if(!_deepDone){_deepDone=true;setTimeout(openListingFromURL,200);}},err=>{renderApp(`<div class="load"><div style="font-size:46px">⚠️</div><div>Impossible de lire les annonces.<br><span class="muted">Vérifie que Firestore est activé et les règles publiées.</span></div><div>${esc(err&&err.message||'')}</div></div>`);});}
 function listenTx(){auth.onAuthStateChanged(u=>{ if(!u){txCache=[];notifsCache=[];notifUnread=0;return;}
   db.collection('transactions').where('participants','array-contains',u.uid).onSnapshot(snap=>{txCache=snap.docs.map(d=>d.data());buildNotifs(u.uid);if(!chatIsOpen()&&(view==='sell'||view==='admin'||view==='home'))boot();}); });}
@@ -1040,7 +1134,7 @@ window.addEventListener('beforeinstallprompt',(e)=>{e.preventDefault();deferredP
 async function installPWA(){ if(!deferredPrompt)return; deferredPrompt.prompt(); const c=await deferredPrompt.userChoice; deferredPrompt=null; toast('Merci ! Hametkro est installé 📲'); }
 
 /* ============== DÉMARRAGE ============== */
-try{ fb(); listenListings(); listenTx(); listenConvs(); listenFood(); }catch(e){ renderApp(`<div class="load"><div style="font-size:46px">⚠️</div><div>Erreur d'initialisation Firebase.</div><div class="muted">Ouvre cette page via le serveur (http), pas en fichier local, et vérifie firebase-config.js.</div></div>`);}
+try{ fb(); listenListings(); listenTx(); listenConvs(); listenFood(); listenAdmin(); }catch(e){ renderApp(`<div class="load"><div style="font-size:46px">⚠️</div><div>Erreur d'initialisation Firebase.</div><div class="muted">Ouvre cette page via le serveur (http), pas en fichier local, et vérifie firebase-config.js.</div></div>`);}
 </script>
 </body>
 </html>
