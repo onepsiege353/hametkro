@@ -23,7 +23,6 @@ class _HomePageState extends State<HomePage> {
   String? _categoryId;
   List<Listing> _items = [];
   bool _loading = true;
-  bool _showFilters = false;
   double? _minPrice, _maxPrice;
   String? _condition;
 
@@ -62,7 +61,6 @@ class _HomePageState extends State<HomePage> {
   @override
   Widget build(BuildContext context) {
     final auth = context.watch<AuthProvider>();
-    final user = auth.user;
     return Scaffold(
       backgroundColor: const Color(0xFFF7F7F5),
       body: SafeArea(

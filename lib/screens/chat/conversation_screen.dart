@@ -32,7 +32,6 @@ class _ConversationScreenState extends State<ConversationScreen> {
   String? _otherId;
   AppUser? _other;
   String? _otherName;
-  String? _otherPhoto;
   bool _offerMode = false;
   double? _offerAmount;
 

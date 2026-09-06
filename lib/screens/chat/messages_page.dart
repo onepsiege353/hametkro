@@ -17,7 +17,6 @@ class MessagesPage extends StatefulWidget {
 
 class _MessagesPageState extends State<MessagesPage> {
   final _chat = ChatService();
-  final _users = UserService();
 
   @override
   Widget build(BuildContext context) {

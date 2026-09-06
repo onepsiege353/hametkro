@@ -6,7 +6,6 @@ import '../../models/listing.dart';
 import '../../providers/auth_provider.dart';
 import '../../services/listing_service.dart';
 import '../../services/review_service.dart';
-import '../../widgets/currency.dart';
 import '../../widgets/listing_card.dart';
 import '../listing/listing_detail_screen.dart';
 import 'edit_profile_screen.dart';

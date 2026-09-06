@@ -114,7 +114,6 @@ class _PostListingScreenState extends State<PostListingScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final auth = context.watch<AuthProvider>();
     return Scaffold(
       appBar: AppBar(title: const Text('Publier une annonce')),
       body: Form(

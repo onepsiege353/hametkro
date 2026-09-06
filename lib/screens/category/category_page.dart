@@ -94,7 +94,6 @@ class _CategoryFeed extends StatefulWidget {
 class _CategoryFeedState extends State<_CategoryFeed> {
   final _service = ListingService();
   List<Listing>? _items;
-  String? _error;
 
   @override
   void initState() {
@@ -106,7 +105,6 @@ class _CategoryFeedState extends State<_CategoryFeed> {
     final auth = context.read<AuthProvider>();
     setState(() {
       _items = null;
-      _error = null;
     });
     try {
       final items = await _service.fetchFeed(
@@ -116,7 +114,6 @@ class _CategoryFeedState extends State<_CategoryFeed> {
       );
       if (mounted) setState(() => _items = items);
     } catch (e) {
-      if (mounted) setState(() => _error = 'Erreur de chargement');
     }
   }
 

@@ -5,7 +5,6 @@ import '../providers/auth_provider.dart';
 import '../providers/favorites_provider.dart';
 import 'category/category_page.dart';
 import 'chat/messages_page.dart';
-import 'favorites/favorites_page.dart';
 import 'home/home_page.dart';
 import 'profile/profile_page.dart';
 import 'posting/post_listing_screen.dart';

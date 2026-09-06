@@ -3,13 +3,11 @@ import 'package:flutter/foundation.dart';
 
 import '../models/app_user.dart';
 import '../services/auth_service.dart';
-import '../services/storage_service.dart';
 import '../services/user_service.dart';
 
 class AuthProvider extends ChangeNotifier {
   final AuthService _auth = AuthService();
   final UserService _users = UserService();
-  final StorageService _storage = StorageService();
 
   bool get initialized => _auth.initialized;
   bool get isSignedIn => _auth.isSignedIn;
