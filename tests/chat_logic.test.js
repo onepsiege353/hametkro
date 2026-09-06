@@ -165,5 +165,24 @@ t('convIdKey sans collision entre paires proches', ()=>{
   assert.notStrictEqual(run('convIdKey("ab","c","i")'), run('convIdKey("a","bc","i")'));
 });
 
+// ===== Tests présence "en ligne" =====
+t('isOnline vrai si presence recente (<60s)', ()=>{
+  assert.strictEqual(run('isOnline({presence:Date.now()-5000})'), true);
+});
+t('isOnline faux si presence ancienne (>60s)', ()=>{
+  assert.strictEqual(run('isOnline({presence:Date.now()-120000})'), false);
+});
+t('isOnline faux si pas de presence', ()=>{
+  assert.strictEqual(run('isOnline({})'), false);
+});
+t('presChip renvoie "En ligne" quand en ligne', ()=>{
+  const c=run('presChip({presence:Date.now()-1000})');
+  assert.ok(c.includes('En ligne'), 'pas de label En ligne');
+  assert.ok(c.includes('pres'), 'pas de classe pres');
+});
+t('presChip renvoie "Hors ligne" sinon', ()=>{
+  assert.ok(run('presChip({presence:Date.now()-200000})').includes('Hors ligne'));
+});
+
 console.log('\n== Resultat : ' + pass + ' ok, ' + fail + ' echec(s) ==');
 process.exit(fail?1:0);
