@@ -56,6 +56,21 @@ jobs:
             echo "::warning::Secret FIREBASE_CONFIG absent. Ajoute ton google-services.json comme secret GitHub. Le build APK sans config Firebase compile mais l'app nécessitera la config pour fonctionner."
           fi
 
+      # Activer le plugin Google Services quand la config Firebase est présente,
+      # sinon laisser la compilation sans Firebase (mode démo).
+      - name: Configurer Gradle pour Firebase
+        run: |
+          set +e
+          grep -q "com.google.gms.google-services" android/build.gradle || \
+            sed -i 's|id "org.jetbrains.kotlin.android".*|&\n    id "com.google.gms.google-services" version "4.4.1" apply false|' android/build.gradle
+          true
+
+      # Génère les dossiers de plateforme Android/iOS manquants (le code source
+      # est stocké sans eux pour rester léger). `flutter create` complète les
+      # fichiers de plateforme nécessaires à la compilation.
+      - name: Générer la plateforme Android
+        run: flutter create --platforms android --org com.hametkro --project-name hametkro .
+
       - name: Dépendances Flutter
         run: flutter pub get
 
