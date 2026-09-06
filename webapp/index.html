@@ -738,31 +738,45 @@ function parseItems(txt){ const out=[]; (txt||'').split('\n').forEach(line=>{
     const name=parts[0].trim(); const price=parseInt((parts[1]||'').replace(/[^\d]/g,''),10);
     if(name && price>0) out.push({name,price});
   }); return out; }
+function parseLines(txt){ const seen=new Set(); (txt||'').split('\n').forEach(l=>{ const s=(l||'').trim(); if(s && !seen.has(s)){ seen.add(s); } }); return [...seen]; }
+// Regroupe les commandes reçues par point de livraison (entreprise).
+function groupIncoming(orders){ const map={};
+  orders.forEach(o=>{ const k=(o.place&&o.place.trim())||''; (map[k]=map[k]||[]).push(o); });
+  return Object.keys(map).map(place=>{ const os=map[place];
+    return {place, orders:os,
+      total: os.reduce((a,o)=>a+(o.total||0),0),
+      deliverable: os.filter(o=>o.status==='confirmed').length}; });
+}
 // --- Formulaire cantinière (créer / modifier) ---
 function foodEdit(){ if(!curProfile)return openAuth(); const sh=shopOf()||{};
   const today=foodToday.find(f=>f.sellerId===curProfile.uid);
   const itemsTxt = today ? (today.items||[]).map(it=>it.name+' | '+it.price).join('\n') : '';
+  const pointsTxt = (sh.points||[]).join('\n');
   openSheet(`<div class="row" style="justify-content:space-between;padding:12px 0"><h2 style="margin:0">🍲 Ma cantinière</h2><span style="cursor:pointer;font-size:20px" onclick="closeAll()">✕</span></div>
    <label>Nom / enseigne</label><input id="ff_name" class="input" value="${esc((sh.name)||curProfile.name||'')}" placeholder="Ex : Plats de Maman Adja">
    <label>Zone de livraison (entreprises, quartiers…)</label><input id="ff_zone" class="input" value="${esc(sh.zone||'')}" placeholder="Ex : Plateau / Cocody, entreprises autour de…">
+   <label>Points de dépôt / entreprises (un par ligne) — tes commandes y seront regroupées</label>
+   <textarea id="ff_points" class="input" rows="3" placeholder="Hall Immeuble N°1&#10;Portail Banque Centrale&#10;Entrée Siège">${esc(pointsTxt)}</textarea>
    <label>Commandes avant</label><select id="ff_cut" class="input">${FOOD_CUTS.map(x=>`<option ${x===minHm(sh.cutoff)}?'selected':''}>${x}</option>`).join('')}</select>
    <div class="row"><div class="grow"><label>Livraison de</label><select id="ff_ws" class="input">${FOOD_WINS.map(x=>`<option ${x===minHm(sh.winS||'12:00')?'selected':''}>${x}</option>`).join('')}</select></div>
    <div class="grow"><label>à</label><select id="ff_we" class="input">${FOOD_WINS.map(x=>`<option ${x===minHm(sh.winE||'14:00')?'selected':''}>${x}</option>`).join('')}</select></div></div>
    <label>Menu du jour (une ligne par plat : <b>Nom | prix</b>)</label>
    <textarea id="ff_items" class="input" rows="5" placeholder="Riz gras | 1500&#10;Attiéké poisson | 2000&#10;Poulet braisé alloco | 2500">${esc(itemsTxt)}</textarea>
-   <div class="info">💰 Paiement à la livraison. Publie ton menu : les commandes passées avant l'heure limite arrivent dans ton espace.</div>
+   <div class="info">💰 Paiement à la livraison · 🚚 Les commandes d'un même point sont regroupées pour une seule tournée.</div>
    <button class="btn g" onclick="foodSave()">✅ Publier / mettre à jour le menu</button>`);
 }
 async function foodSave(){ const n=(val('ff_name')||'').trim(), z=(val('ff_zone')||'').trim();
   if(n.length<2) return toast('Nom requis'); if(z.length<2) return toast('Zone requise');
   const cut=hmMin(val('ff_cut')), ws=hmMin(val('ff_ws')), we=hmMin(val('ff_we'));
+  const points=parseLines(val('ff_points'));
   const items=parseItems(val('ff_items'));
   if(!items.length) return toast('Ajoute au moins un plat (Nom | prix)');
   try{
-    await db.collection('users').doc(curProfile.uid).set({food:{name:n,zone:z,cutoff:cut,winS:ws,winE:we}},{merge:true});
+    const food={name:n,zone:z,cutoff:cut,winS:ws,winE:we,points};
+    await db.collection('users').doc(curProfile.uid).set({food},{merge:true});
     const date=todayISO(); const did=curProfile.uid+'_'+date;
     await db.collection('foodmenus').doc(did).set({id:did,sellerId:curProfile.uid,sellerName:n,zone:z,
-      date,cutoff:cut,winS:ws,winE:we,items,time:Date.now()});
+      points,date,cutoff:cut,winS:ws,winE:we,items,time:Date.now()});
     await refreshMe(); // recharge le profil (food) pour afficher le panneau cantinière
     closeAll(); toast('🎉 Menu du jour publié !'); shell();
   }catch(e){ console.error('FOOD_SAVE', e&&e.code, e&&e.message); toast('❌ '+(e&&e.message||'enregistrement impossible')); }
@@ -786,7 +800,8 @@ function orderSheet(menuId){ if(!curProfile)return openAuth(); const m=foodToday
    ${(m.items||[]).map((it,i)=>`<div class="row" style="justify-content:space-between;padding:7px 0;border-bottom:1px solid var(--line)">
       <div><div>${esc(it.name)}</div><div class="muted">${fmtFCFA(it.price)} FCFA</div></div>
       <div style="display:flex;align-items:center;gap:7px"><button class="btn ghost sm" onclick="oq('${menuId}',${i},-1)">−</button><b id="oq_${i}" style="min-width:18px;text-align:center">0</b><button class="btn ghost sm" onclick="oq('${menuId}',${i},1)">+</button></div></div>`).join('')}
-   <label>Point de livraison / entreprise (optionnel)</label><input id="ff_place" class="input" placeholder="Ex : Hall d'entrée, Immeuble N°2">
+   <label>Point de livraison / entreprise</label><input id="ff_place" class="input" list="ff_pts" placeholder="Choisis ton entreprise / point de dépôt…">
+   ${(m.points&&m.points.length)?`<datalist id="ff_pts">${m.points.map(x=>`<option value="${esc(x)}">`).join('')}</datalist><div class="muted">💡 Les commandes d'un même point sont <b>groupées</b> pour une seule tournée de ${esc(m.sellerName)}.</div>`:'<div class="muted">Indique ton point de livraison / entreprise.</div>'}
    <label>Note pour la cantinière</label><input id="ff_note" class="input" placeholder="Ex : sans piment">
    <button class="btn g" onclick="orderSave('${m.id}')">Confirmer la commande (paiement à la livraison)</button>`);
   window._ordQty=(m.items||[]).map(()=>0); }
@@ -819,6 +834,40 @@ function orderCard(o){ const mine=curProfile&&o.sellerId===curProfile.uid;
 async function orderAct(id,status){ const d=await db.collection('foodorders').doc(id).get(); if(!d.exists)return;
   await d.ref.update({status,updatedAt:Date.now()});
   toast(status==='done'?'🎉 Commande livrée':status==='confirmed'?'Commande confirmée':'Commande annulée'); shell(); }
+// --- Regroupement par entreprise / point de livraison ---
+function incGroupCard(g,i){
+  const place=g.place||'Point non précisé';
+  return `<div class="box" style="border-left:4px solid var(--grn)">
+    <div class="row"><b class="grow">🏢 ${esc(place)}</b><span class="badge">${g.orders.length} cmd · ${fmtFCFA(g.total)} FCFA</span></div>
+    ${g.orders.map(orderIncMini).join('')}
+    ${g.deliverable?`<button class="btn g sm" style="margin-top:8px" onclick="orderDeliverPoint(${i})">🛵 Tournée ${esc(place)} prête — tout livrer (${g.deliverable})</button>`:''}
+  </div>`;
+}
+function orderIncMini(o){
+  const mine = o.sellerId===(curProfile&&curProfile.uid);
+  const summary=(o.items||[]).map(x=>x.qty+'× '+x.name).join(', ');
+  const st={'placed':'🟡 à confirmer','confirmed':'🟢 confirmée','done':'✅ livrée','cancel':'✖️ annulée'}[o.status]||esc(o.status);
+  let act='';
+  if(mine){
+    if(o.status==='placed') act=`<button class="btn g sm" onclick="orderAct('${o.id}','confirmed')">Confirmer</button> <button class="btn ghost sm" onclick="orderAct('${o.id}','cancel')">✕</button>`;
+    else if(o.status==='confirmed') act=`<button class="btn g sm" onclick="orderAct('${o.id}','done')">Livrée ✅</button>`;
+  }
+  return `<div style="border-top:1px solid var(--line);padding:7px 0;margin-top:6px">
+    <div class="row"><b style="font-size:13px">${esc(o.buyerName)}</b><span class="muted" style="font-size:10px">${timeago(o.time)}</span></div>
+    <div class="muted">${esc(summary)} · <b>${fmtFCFA(o.total)} FCFA</b>${o.note?(' · 💬 '+esc(o.note)):''}</div>
+    <div style="display:flex;align-items:center;justify-content:space-between;gap:6px;margin-top:5px"><span style="font-size:11px">${st}</span>${act}</div></div>`;
+}
+async function orderDeliverPoint(i){
+  const grp=window._incGroups && window._incGroups[i]; if(!grp) return;
+  const ready=grp.orders.filter(o=>o.status==='confirmed');
+  if(!ready.length) return toast('Aucune commande confirmée à livrer ici');
+  try{
+    for(const o of ready) await db.collection('foodorders').doc(o.id).update({status:'done',updatedAt:Date.now()});
+    toast('🛵 '+ready.length+' commande'+(ready.length>1?'s':'')+' livrée'+(ready.length>1?'s':'')+' — tournée '+esc(grp.place||'terminée'));
+  }catch(e){ console.error('FOOD_GROUP_DELIVER',e&&e.code,e&&e.message); toast('❌ '+(e&&e.message||'erreur')); }
+  shell();
+}
+
 // --- Vue Resto (route) ---
 function foodBrowse(){
   const list=foodToday.filter(m=>m.sellerId!==(curProfile&&curProfile.uid));
@@ -846,7 +895,11 @@ function foodManageHTML(){
   const menuBlock = today ? `<div class="box"><b>🍽️ Menu du jour — ${esc(today.date)}</b>
     ${(today.items||[]).map(it=>`<div class="row" style="justify-content:space-between;padding:3px 0"><span>• ${esc(it.name)}</span><b>${fmtFCFA(it.price)} FCFA</b></div>`).join('')}
     <div class="muted" style="margin-top:4px">${menuOpen(today)?'🟢 Commandes ouvertes (avant '+minHm(today.cutoff)+')':"🔴 Commandes fermées pour aujourd'hui"}</div></div>` : `<p class="muted">Publie ton menu pour recevoir des commandes.</p>`;
-  const incoming = incOrders.length ? `<h3 style="margin:12px 2px 6px">📋 Commandes reçues (${incOrders.length})</h3>${incOrders.map(orderCard).join('')}` : `<p class="muted">Aucune commande reçue pour l'instant.</p>`;
+  const todayOrders = incOrders.filter(o=>o.date===todayISO());
+  const groups = groupIncoming(todayOrders);
+  window._incGroups = groups;
+  const incoming = groups.length ? `<h3 style="margin:12px 2px 8px">📋 Commandes du jour (${todayOrders.length}) — regroupées par entreprise</h3>${groups.map((g,i)=>incGroupCard(g,i)).join('')}`
+    : `<p class="muted">Aucune commande reçue aujourd'hui pour l'instant. Les commandes d'un même point seront regroupées ici.</p>`;
   return `<div style="padding:0 12px"><h2 style="margin:10px 2px 2px">Ma cantinière</h2>${panel}${menuBlock}${incoming}</div>`;
 }
 

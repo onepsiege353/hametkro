@@ -98,5 +98,26 @@ t('menuOpen faux si cutoff dépassé (cutoff 00:00)', ()=>{
 t('fmtFCFA met des espaces milliers', ()=>{ assert.strictEqual(run('fmtFCFA(1500)'), '1 500'); });
 t('fmtFCFA arrondit', ()=>{ assert.strictEqual(run('fmtFCFA(1999.6)'), '2 000'); });
 
+
+// --- parseLines & groupIncoming (regroupement par entreprise) ---
+t('parseLines nettoie et déduplique les points', ()=>{
+  assert.strictEqual(JSON.stringify(run('parseLines(["Hall A","Hall A","  ","Portail"].join(String.fromCharCode(10)))')), JSON.stringify(['Hall A','Portail']));
+});
+t('groupIncoming regroupe par point et calcule total + livrables', ()=>{
+  const orders=[{place:'Hall A',status:'confirmed',total:1500},{place:'Hall A',status:'done',total:2000},{place:'Portail',status:'placed',total:1000}];
+  const g=run('groupIncoming('+JSON.stringify(orders)+')');
+  assert.strictEqual(g.length,2);
+  const hall=g.find(x=>x.place==='Hall A');
+  assert.strictEqual(hall.orders.length,2);
+  assert.strictEqual(hall.total,3500);
+  assert.strictEqual(hall.deliverable,1);
+});
+t('groupIncoming gère les points vides (Point non précisé)', ()=>{
+  const g=run('groupIncoming([{place:"",status:"placed",total:500},{place:"",status:"placed",total:600}])');
+  assert.strictEqual(g.length,1);
+  assert.strictEqual(g[0].place,'');
+  assert.strictEqual(g[0].total,1100);
+});
+
 console.log('\n== Resultat : '+pass+' ok, '+fail+' echec(s) ==');
 process.exit(fail?1:0);
