@@ -572,6 +572,85 @@ function onboardSkip(){ closeAll(); db.collection('users').doc(curProfile.uid).u
 // « Vérifié » : profil complété (WhatsApp/téléphone) — badge de confiance.
 function verifiedBadge(p){ const ok=p&&((p.wa&&String(p.wa).replace(/[^0-9]/g,'').length>=7)||(p.phone&&String(p.phone).replace(/[^0-9]/g,'').length>=7));
   return ok?'<span class="badge" style="background:var(--grn)">✓ Vérifié</span>':'<span class="badge" style="background:var(--grey2)">Compte de base</span>'; }
+
+/* ============== PAQUET B : CONFIANCE · FRAÎCHEUR · NÉGOCIATION ============== */
+function listingDays(l){ return Math.floor((Date.now()-(l.time||0))/864e5); }
+function listingStale(l){ return listingDays(l) > 14; }
+function listingAgeChip(l){ const d=listingDays(l);
+  if(d<1) return '<span class="badge" style="background:var(--org)">NOUVEAU</span>';
+  if(d<=7) return '<span class="muted" style="font-size:10px">publié '+timeago(l.time)+'</span>';
+  return '<span class="warn" style="padding:4px 9px;font-size:10px;margin:0">⚠️ '+(d>45?'annonce ancienne':'publié il y a '+d+' j')+'</span>'; }
+async function bumpListing(id){ const d=await db.collection('listings').doc(id).get(); if(!d.exists)return;
+  await d.ref.update({time:Date.now(),createdAt:Date.now()}); toast('↻ Remise en avant 🔥'); closeAll(); view='sell';shell(); }
+async function toggleSoldMine(id){ const d=await db.collection('listings').doc(id).get(); if(!d.exists)return;
+  const now=!d.data().sold; await d.ref.update({sold:now}); toast(now?'✅ Marquée vendue':'↩️ Remise en vente'); closeAll(); view='sell';shell(); }
+// --- « Proposer un prix » : négociation structurée hébergée sur la conversation ---
+async function ensureConvFor(l){ const cid=convIdKey(curProfile.uid,l.sellerId,l.id);
+  const ref=db.collection('conversations').doc(cid); const d=await ref.get();
+  if(!d.exists){ await ref.set({id:cid,participantIds:[curProfile.uid,l.sellerId].sort(),
+    participants:[{uid:curProfile.uid,name:curProfile.name},{uid:l.sellerId,name:l.sellerName||'Vendeur'}],
+    itemId:l.id,itemTitle:l.t,msgs:[],lastAt:Date.now(),seen:{},createdAt:Date.now()}); }
+  return cid; }
+function proposeSheet(id){ if(!curProfile)return openAuth(); const l=allListings.find(x=>x.id===id); if(!l)return;
+  if(l.sellerId===curProfile.uid) return toast('C\'est ton propre article');
+  openSheet(`<div class="row" style="justify-content:space-between;padding:12px 0"><b>🤝 Proposer un prix</b><span style="cursor:pointer;font-size:20px" onclick="closeAll()">✕</span></div>
+   <div class="box"><div class="muted">« ${esc(l.t)} » — affiché à <b>${fmt(l.p)} FCFA</b></div></div>
+   <label>Ton prix (FCFA)</label><input id="of_price" class="input" type="number" value="${l.p}">
+   <label>Message au vendeur (optionnel)</label><input id="of_note" class="input" placeholder="Ex : je peux venir la chercher aujourd'hui…">
+   <div class="info">💡 Le vendeur peut <b>accepter</b> ou <b>refuser</b>. Si accepté, tu lances la transaction sécurisée au prix convenu.</div>
+   <button class="btn g" onclick="sendOffer('${id}')">Envoyer mon offre</button>`); }
+async function sendOffer(id){ const l=allListings.find(x=>x.id===id); if(!l)return;
+  const amount=parseFloat(val('of_price')); if(!amount||amount<=0)return toast('Prix invalide');
+  const note=val('of_note').trim(); const cid=await ensureConvFor(l);
+  const now=Date.now(); const msg={uid:curProfile.uid,name:curProfile.name,time:now,text:'💰 propose '+fmt(amount)+' FCFA'+(note?(' — '+note):'')};
+  const fv=firebase.firestore.FieldValue;
+  try{
+    await db.collection('conversations').doc(cid).update({msgs:fv.arrayUnion(msg),lastAt:now,lastMsg:msg.text,
+      offer:{id:uidr(),buyerId:curProfile.uid,buyerName:curProfile.name,amount,note,status:'sent',time:now}});
+    closeAll(); toast('💰 Offre envoyée'); await openConv(cid);
+  }catch(e){ console.error('OFFER',e&&e.code,e&&e.message); toast('❌ '+(e&&e.message||'envoi impossible')); } }
+function offerBannerHTML(of){ if(!of) return ''; const meBuyer=of.buyerId===(curProfile&&curProfile.uid);
+  const amt=fmt(of.amount);
+  const wrap=(inner)=>{ const tone=of.status==='accepted'?'var(--grn)':(of.status==='refused'?'var(--sang)':'var(--org)');
+    return `<div style="margin:8px 14px 4px;background:#fff;border:1.5px solid ${tone};border-radius:15px;padding:11px 13px">
+      <div class="row"><b style="font-size:13px">🤝 Offre · ${amt} FCFA</b><span style="font-size:10px;color:var(--grey)">${timeago(of.time)}</span></div>${inner}</div>`; };
+  if(of.status==='sent') return wrap(meBuyer
+    ? `<p class="muted" style="margin:6px 0 0">En attente de réponse du vendeur${of.note?(' · «'+esc(of.note)+'»'):''}.</p>`
+    : `<p class="muted" style="margin:6px 0 0">${esc(of.buyerName)} propose ${amt} FCFA${of.note?(' — «'+esc(of.note)+'»'):''}.</p>
+       <div class="row" style="margin-top:8px"><button class="btn g sm" style="flex:1" onclick="offerResp('accept')">Accepter</button><button class="btn ghost sm" style="flex:1" onclick="offerResp('refuse')">Refuser</button></div>`);
+  if(of.status==='accepted') return wrap(meBuyer
+    ? `<p class="muted" style="margin:6px 0 0">Le vendeur a accepté <b>${amt} FCFA</b>. Lance la transaction sécurisée au prix convenu.</p>
+       <button class="btn g sm" style="margin-top:8px" onclick="startTxFromOffer()">🛡️ Lancer la transaction à ${amt} FCFA</button>`
+    : `<p class="muted" style="margin:6px 0 0">Tu as accepté ${amt} FCFA. En attente que ${esc(of.buyerName)} lance la transaction.</p>`);
+  if(of.status==='refused') return wrap(`<p class="muted" style="margin:6px 0 0">Cette offre a été refusée.</p>`);
+  if(of.status==='cancelled') return wrap(`<p class="muted" style="margin:6px 0 0">Cette offre a été retirée.</p>`);
+  return ''; }
+async function offerResp(act){ const c=myConvRefData(); if(!c||!c.offer)return;
+  const st= act==='accept'?'accepted':'refused';
+  try{ await db.collection('conversations').doc(_activeCid).update({offer:Object.assign({},c.offer,{status:st,respBy:curProfile.uid,respAt:Date.now()})});
+    toast(st==='accepted'?'✅ Offre acceptée':'Offre refusée'); }catch(e){ toast('❌ '+e.message); } }
+function myConvRefData(){ return _convData; }
+async function startTxFromOffer(){ const c=_convData; if(!c)return;
+  const itemId=c.itemId; const l=allListings.find(x=>x.id===itemId); if(!l)return toast('Article introuvable');
+  const amount=(c.offer&&c.offer.amount)||l.p;
+  await createTxAt(l.id, amount); }
+async function createTxAt(id, forceAmount){ let l=allListings.find(x=>x.id===id); if(!l)return;
+  const p=forceAmount||l.p; if(!p||p<=0)return toast('Prix invalide');
+  let doc=db.collection('transactions').doc(); let now=Date.now();
+  try{
+    await doc.set({id:doc.id,itemId:id,itemTitle:l.t,buyerId:curProfile.uid,buyerName:curProfile.name,sellerId:l.sellerId,sellerName:l.sellerName,participants:[curProfile.uid,l.sellerId],mode:'hand',price:p,status:'agreed',validBuyer:false,validSeller:false,commission:Math.round(p*COMM_RATE),createdAt:now,updatedAt:now});
+    closeAll(); toast('✅ Transaction sécurisée lancée ('+fmt(p)+' FCFA)'); view='sell';shell();
+  }catch(e){ console.error('TXN',e&&e.code,e&&e.message); toast('❌ '+(e&&e.message||'erreur')); } }
+// Affiche un mini aperçu « vendeur » dans la fiche avec vérifié + activité.
+async function loadDetSeller(sid){ const s=await getSeller(sid);
+  const el=document.getElementById('detSeller'); if(!el)return;
+  const draw=(sp)=>{ if(!el)return; const count=allListings.filter(x=>x.sellerId===sid&&!x.sold).length;
+    const name=sp?esc(sp.name):'Vendeur'; const city=sp?(esc(sp.city||'')+' · '):'';
+    el.innerHTML=`<b>${name}</b><br><span class="muted">${city}${count?('🛒 '+count+' en vente · '):''}voir profil →</span>
+      <div style="display:flex;gap:6px;margin-top:6px;align-items:center;flex-wrap:wrap">${verifiedBadge(sp)}${presChip(sp)}</div>`; };
+  draw(s);
+  if(el._pt)clearInterval(el._pt);
+  el._pt=setInterval(async()=>{ const s2=await getSeller(sid); const e=document.getElementById('detSeller'); if(e)draw(s2); },20000); }
 // ===== PAGE VENDEUR DÉTAILLÉE =====
 async function openSeller(sid){ closeAll();
   const mine = curProfile && curProfile.uid===sid;
@@ -617,17 +696,26 @@ function detail(id){let l=allListings.find(x=>x.id===id);if(!l)return;
   <div class="muted">📍 ${esc(l.city||'')}, Côte d'Ivoire · ${timeago(l.time)}</div>
   <div style="font-size:25px;font-weight:900;color:var(--grn);margin:8px 0">${fmt(l.p)} FCFA <span class="chip on" style="font-size:10px;vertical-align:middle;cursor:default">${esc(l.cond||'')}</span></div>
   <div class="box"><b>Description</b><p class="muted" style="margin:5px 0;font-size:13px">${esc(l.d||"Vendeur de confiance. Remise en main propre, paiement à la réception — jamais d'avance.")}</p></div>
-  <div class="box" style="display:flex;gap:10px;align-items:center;cursor:pointer" onclick="closeAll();openSeller('${l.sellerId}')"><div class="av">🛍️</div><div class="grow"><b>${esc(l.sellerName||'Vendeur')}</b><br><span class="muted">Vendeur ${esc(l.city||'')} · voir profil →</span></div><span id="detPres" class="badge">…</span></div>
-  ${mine?'<div class="info">C\'est ton article.</div>':
-    `<div class="row" style="gap:8px;margin-top:8px">
+  <div class="box" style="display:flex;gap:10px;align-items:center;cursor:pointer" onclick="closeAll();openSeller('${l.sellerId}')"><div class="av">🛍️</div><div class="grow" id="detSeller"><span class="muted">…</span></div></div>
+  ${mine
+    ? `<div class="info" style="border-left:4px solid var(--grn)">C'est ton article.${l.sold?' <b>Marqué vendu.</b>':''}</div>
+       ${listingStale(l)?`<div class="warn"><b>⚠️ Annonce publiée il y a ${listingDays(l)} j.</b> Remets-la en avant pour la voir remonter dans « Nouveautés ».</div>`:''}
+       <div class="row" style="gap:8px;margin-top:8px">
+         <button class="btn g" style="flex:1" onclick="bumpListing('${l.id}')">↻ Remettre en avant</button>
+         <button class="btn ghost" style="flex:1" onclick="toggleSoldMine('${l.id}')">${l.sold?'↩️ Remettre en vente':'✅ Marquer vendue'}</button>
+       </div>`
+    : `<div class="row" style="gap:8px;margin-top:8px">
       <button class="btn g" style="flex:1" onclick="curUser?openChatFromListing('${l.id}'):openAuth('sell')">💬 Discuter</button>
       <button class="btn ghost" style="flex:1" onclick="shareListing('${l.id}')">📤 Partager</button>
       <button class="btn ghost" style="flex:0 0 54px;font-size:19px" onclick="curUser?toggleFav('${l.id}',true):favCta()">${myFavs.has(l.id)?'❤️':'🤍'}</button></div>
      <a id="detWa" class="btn ghost" style="margin-top:8px;display:none;text-decoration:none" target="_blank" rel="noopener">🟢 Contacter sur WhatsApp</a>
-     <button class="btn ghost" style="margin-top:8px" onclick="curUser?startContact('${l.id}'):openAuth('sell')">🛡️ Lancer une transaction sécurisée</button>
-     <div class="info" style="text-align:center">🔒 Achat sécurisé : validation mutuelle. Commission ${Math.round(COMM_RATE*100)}%.</div>`}
+     <div class="row" style="gap:8px;margin-top:8px">
+       <button class="btn g" style="flex:1" onclick="curUser?proposeSheet('${l.id}'):openAuth('sell')">🤝 Proposer un prix</button>
+       <button class="btn ghost" style="flex:1" onclick="curUser?startContact('${l.id}'):openAuth('sell')">🛡️ Transaction sécurisée</button>
+     </div>
+     <div class="info" style="text-align:center">🔒 Achat sécurisé : validation mutuelle. Commission ${Math.round(COMM_RATE*100)}%. Ne paie jamais d'avance.</div>`}
   </div>`);
-  loadDetailPres(l.sellerId);
+  loadDetSeller(l.sellerId);
   loadDetWa(l.sellerId);
 }
 // ===== Partage WhatsApp + lien d'annonce =====
@@ -823,20 +911,26 @@ async function openConv(cid){ if(!curProfile) return openAuth();
   const o=otherName(_convData); const name=esc(o?o.name:'Vendeur');
   renderApp(`<div class="chatHead"><button class="btn ghost sm" onclick="closeConv()">←</button>
     <div class="grow"><b>${name}</b><div class="muted" style="font-size:11px">🛍️ ${esc(_convData.itemTitle||'')}</div></div>
-    <span class="badge">Vérifié</span></div>
+    <span id="chatOtherBadge" class="badge" style="background:var(--grey2)">…</span></div>
     <div class="chatBox" id="convSc">${convBubbles(_convData)}</div>
+    <div id="offerArea">${offerBannerHTML(_convData?_convData.offer:null)}</div>
     <div class="chatInput"><input type="file" id="chatFile" accept="image/*" style="display:none" onchange="chatOnPhoto(this)">
     <button class="sendBtn" style="background:linear-gradient(135deg,#FB8B24,#F07A1E)" title="Envoyer une photo" onclick="document.getElementById('chatFile').click()">📷</button>
     <input id="msgText" class="input" autocomplete="off" placeholder="Écris un message…" onkeydown="if(event.key==='Enter'){sendMsg();event.preventDefault();}">
     <button class="sendBtn" onclick="sendMsg()">➤</button></div>`);
   scrollConv();
+  renderOfferArea(); loadChatOther();
+  function renderOfferArea(){ const el=document.getElementById('offerArea'); if(el) el.innerHTML=offerBannerHTML(_convData?_convData.offer:null); }
+  async function loadChatOther(){ const o=otherName(_convData); const el=document.getElementById('chatOtherBadge'); if(!el)return;
+    if(!o) return; let p=null; try{ const d=await db.collection('users').doc(o.uid).get(); p=d.exists?d.data():null; }catch(e){}
+    if(el) el.innerHTML=verifiedBadge(p); }
   if(chatUnsub)chatUnsub();
   chatUnsub=ref.onSnapshot(snap=>{ if(!snap.exists)return; const prev=_convData; _convData=snap.data();
     const wasAtBottom=convAtBottom();
     const sc=document.getElementById('convSc'); if(sc) sc.innerHTML=convBubbles(_convData);
     if(convAtBottom()===false && (prev&&(_convData.msgs||[]).length>(prev.msgs||[]).length)) { /* message entrant en bas de page */ }
     if(wasAtBottom||prev==null) scrollConv();
-    convMarkSeen(cid,_convData); });
+    renderOfferArea(); convMarkSeen(cid,_convData); });
 }
 let _convRef=null;
 function convScroller(){return document.getElementById('convSc');}
