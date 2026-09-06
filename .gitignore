@@ -25,3 +25,6 @@ ios/Runner/GoogleService-Info.plist
 # divers
 *.log
 .DS_Store
+
+# Local Netlify folder
+.netlify
