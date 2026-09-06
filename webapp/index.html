@@ -108,15 +108,28 @@ function renderApp(h){document.getElementById('app').innerHTML=h}
 
 /* ============== FIREBASE ============== */
 let db, auth, curUser=null, curProfile=null;
+// Charge le profil Firestore de l'utilisateur courant (ou null si non connecté).
+async function refreshMe(){
+  const u=auth&&auth.currentUser;
+  curUser=u;
+  if(!u){ curProfile=null; return; }
+  try{ const d=await db.collection('users').doc(u.uid).get(); curProfile=d.exists?d.data():null; }
+  catch(e){ curProfile=null; }
+}
 function fb(){
   firebase.initializeApp(window.HAM_FIREBASE_CONFIG);
   auth=firebase.auth(); db=firebase.firestore();
-  // Permet plusieurs onglets sans conflit, sinon prend session en cache
   auth.setPersistence(firebase.auth.Auth.Persistence.LOCAL).catch(()=>{});
-  auth.onAuthStateChanged(async u=>{ curUser=u;
-    if(u){ try{let d=await db.collection('users').doc(u.uid).get(); curProfile=d.exists?d.data():null;}catch(e){curProfile=null;} }
-    else curProfile=null;
-    boot(); });
+  auth.onAuthStateChanged(async u=>{
+    curUser=u;
+    if(u){
+      try{const d=await db.collection('users').doc(u.uid).get(); curProfile=d.exists?d.data():null;}
+      catch(e){curProfile=null;}
+      // Cas inscription : le doc peut être écrit juste APRÈS ce premier read.
+      if(!curProfile){ await new Promise(r=>setTimeout(r,700)); try{const d=await db.collection('users').doc(u.uid).get(); curProfile=d.exists?d.data():null;}catch(e){} }
+    } else curProfile=null;
+    boot();
+  });
 }
 function isAdmin(){return curProfile&&curProfile.role==='admin'}
 
@@ -181,7 +194,11 @@ function openAuthForm(login){openModal(`<div class="cardp"><b style="font-size:1
  <p class="muted center">← <a onclick="openAuth()">retour</a></p></div>`);}
 function val(id){let x=document.getElementById(id);return x?x.value:''}
 async function doLogin(){let e=val('le'),p=val('lp');if(!e||!p)return toast('Remplis les champs');
- try{await auth.signInWithEmailAndPassword(e,p);toast('Bienvenue 👋');closeAll();view='home';shell();}
+ try{
+  await auth.signInWithEmailAndPassword(e,p);
+  await refreshMe(); // garantit le chargement du profil avant l'affichage
+  toast('Bienvenue 👋');closeAll();view='home';shell();
+ }
  catch(err){toast('❌ '+(err.code==='auth/user-not-found'||err.code==='auth/wrong-password'?'Email ou mot de passe incorrect':(err.code==='auth/user-disabled'?'Compte désactivé':err.code)));}}
 async function doRegister(){let n=val('rn'),e=val('re'),p=val('rp'),city=val('rc')||'Abidjan';
  if(n.length<2)return toast('Entre ton nom');if(!/^\S+@\S+\.\S+$/.test(e))return toast('Email invalide');if(p.length<6)return toast('Mot de passe min 6');
@@ -190,6 +207,7 @@ async function doRegister(){let n=val('rn'),e=val('re'),p=val('rp'),city=val('rc
   // 1er compte sur projet vide => admin (paramétrage initial)
   let isFirst=false;try{let c=await db.collection('users').get();isFirst=(c.size===0);}catch(_){}
   await db.collection('users').doc(uid).set({uid,name:n,email:e.toLowerCase(),city,country:"Côte d'Ivoire",countryCode:'CI',created:Date.now(),role:isFirst?'admin':'member'});
+  await refreshMe(); // recharge le profil DÈS que le doc existe (évite de rester sur la page de connexion)
   toast(isFirst?'🎉 Compte créé — tu es ADMIN (1er utilisateur)':'🎉 Compte créé');closeAll();view='home';shell();
  }catch(err){toast('❌ '+(err.code==='auth/email-already-in-use'?'Cet email existe déjà':err.code));}}
 
