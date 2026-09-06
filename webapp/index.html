@@ -97,6 +97,20 @@ if ('serviceWorker' in navigator) {
   .sectionTitle{display:flex;align-items:center;justify-content:space-between;padding:14px 14px 4px}
   .sectionTitle h3{margin:0;font-size:16px}
   .sectionTitle a{font-size:12px}
+  /* rubrique "Nouveautés" mise en avant (bandeau horizontal) */
+  .featureWrap{padding:6px 0 2px}
+  .featured{display:flex;gap:10px;overflow-x:auto;padding:6px 14px 10px;scrollbar-width:none}
+  .featured::-webkit-scrollbar{display:none}
+  .fcard{flex:0 0 130px;background:#fff;border:1px solid var(--line);border-radius:14px;overflow:hidden;cursor:pointer;position:relative}
+  .fcard.on{outline:2px solid var(--org)}
+  .fcard .fimg{height:110px;display:flex;align-items:center;justify-content:center;background:linear-gradient(135deg,#FCE8D6,#E5F4EA)}
+  .fcard .fimg img{width:100%;height:100%;object-fit:cover}
+  .fcard .fimg .e{font-size:40px}
+  .fcard .fbd{padding:8px}
+  .fcard .fbd .ft{font-size:12px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .fcard .fbd .fp{color:var(--grn);font-weight:900;font-size:13px}
+  .fcard .nbadge{position:absolute;left:6px;top:6px;background:var(--org);color:#fff;font-size:8px;font-weight:800;padding:2px 6px;border-radius:6px;letter-spacing:.3px}
+  .fcard .promo{position:absolute;right:6px;top:6px;background:var(--grn);color:#fff;font-size:8px;font-weight:800;padding:2px 6px;border-radius:6px}
   /* galerie dans la fiche détail */
   .gallery{position:relative;background:#111}
   .gallery img{width:100%;max-height:300px;object-fit:contain;background:#111;display:block}
@@ -169,6 +183,54 @@ function renderApp(h){document.getElementById('app').innerHTML=h}
 
 /* ============== FIREBASE ============== */
 let db, auth, curUser=null, curProfile=null;
+// Cache des profils vendeurs (par uid) pour la page vendeur détaillée.
+let sellerCache={};
+async function getSeller(uid){ if(sellerCache[uid]) return sellerCache[uid];
+  try{ const d=await db.collection('users').doc(uid).get(); sellerCache[uid]= d.exists?d.data():null; }
+  catch(e){ sellerCache[uid]=null; } return sellerCache[uid]; }
+
+// Notifications générées à partir des transactions de l'utilisateur (aucun
+// stockage serveur nécessaire). État "lu" conservé en local par utilisateur.
+let notifsCache=[];
+let notifUnread=0;
+function notifReadKey(uid){return 'ham_notifread_'+uid;}
+function buildNotifs(uid){
+  if(!uid) { notifsCache=[]; notifUnread=0; return; }
+  let arr=[];
+  // Notifications de transactions me concernant
+  txCache.forEach(t=>{
+    const meAsBuyer = t.buyerId===uid, meAsSeller = t.sellerId===uid;
+    const ts=t.updatedAt||t.createdAt||Date.now();
+    if(meAsSeller && t.status==='agreed' && !t.validBuyer){
+      arr.push({id:t.id+'_req',icon:'🛒',title:'Nouvelle transaction',body:esc(t.buyerName)+' veut acheter « '+esc(t.itemTitle)+' » ('+fmt(t.price)+' FCFA).',time:ts,read:false});
+    }
+    if(meAsSeller && t.validBuyer && !t.validSeller && t.status!=='done'){
+      arr.push({id:t.id+'_buyerok',icon:'✅',title:'L\'acheteur a confirmé',body:esc(t.buyerName)+' a reçu l\'article. Confirme le paiement reçu pour clôturer.',time:ts,read:false});
+    }
+    if(meAsBuyer && t.validSeller && !t.validBuyer && t.status!=='done'){
+      arr.push({id:t.id+'_sellerok',icon:'✅',title:'Le vendeur a confirmé',body:esc(t.sellerName)+' a confirmé le paiement. Confirme la réception.',time:ts,read:false});
+    }
+    if(t.status==='done' && meAsSeller){
+      arr.push({id:t.id+'_done',icon:'🎉',title:'Vente terminée',body:'« '+esc(t.itemTitle)+' » : commission '+fmt(t.commission)+' FCFA tracée pour Hametkro.',time:ts,read:false});
+    }
+    if(t.status==='dispute'){
+      arr.push({id:t.id+'_disp',icon:'⚠️',title:'Litige en cours',body:'« '+esc(t.itemTitle)+' » : l\'admin va arbitrer.',time:ts,read:false});
+    }
+  });
+  arr.sort((a,b)=>b.time-a.time);
+  const readSet=new Set(JSON.parse(localStorage.getItem(notifReadKey(uid))||'[]'));
+  arr.forEach(n=>{ if(readSet.has(n.id)) n.read=true; });
+  notifsCache=arr.slice(0,30);
+  notifUnread=arr.filter(n=>!n.read).length;
+}
+function markNotifsRead(){ if(!curProfile)return; const u=curProfile.uid;
+  const readSet=new Set(JSON.parse(localStorage.getItem(notifReadKey(u))||'[]'));
+  notifsCache.forEach(n=>readSet.add(n.id)); notifsCache.forEach(n=>n.read=true); notifUnread=0;
+  localStorage.setItem(notifReadKey(u),JSON.stringify([...readSet])); }
+function openNotifs(){ if(!curProfile)return openAuth(); markNotifsRead(); shell();
+  openModal(`<div style="padding:14px 16px"><div class="row" style="justify-content:space-between"><b style="font-size:17px">🔔 Notifications</b><span style="cursor:pointer;font-size:20px" onclick="closeAll()">✕</span></div>
+    <div style="margin-top:6px">${notifsCache.length?notifsCache.map(n=>`<div class="box" style="display:flex;gap:10px;align-items:flex-start;border-left:3px solid ${n.read?'var(--line)':'var(--org)'}"><div style="font-size:22px">${n.icon}</div><div class="grow"><b>${n.title}</b>${!n.read?' <span class="badge">nouveau</span>':''}<p class="muted" style="margin:2px 0">${n.body}</p><div class="muted" style="font-size:10px">${timeago(n.time)}</div></div></div>`).join(''):'<p class="muted center" style="padding:30px 0">Aucune notification pour le moment.</p>'}</div></div>`); }
+
 // Charge le profil Firestore de l'utilisateur courant (ou null si non connecté).
 async function refreshMe(){
   const u=auth&&auth.currentUser;
@@ -188,7 +250,8 @@ function fb(){
       catch(e){curProfile=null;}
       // Cas inscription : le doc peut être écrit juste APRÈS ce premier read.
       if(!curProfile){ await new Promise(r=>setTimeout(r,700)); try{const d=await db.collection('users').doc(u.uid).get(); curProfile=d.exists?d.data():null;}catch(e){} }
-    } else curProfile=null;
+      afterAuthRebuild(u);
+    } else { curProfile=null; notifsCache=[]; notifUnread=0; }
     boot();
   });
 }
@@ -200,7 +263,11 @@ function boot(){ shell(); }
 function shell(){
   let body = view==='home'?homeV(): view==='sell'?sellV(): view==='me'?profileV(): view==='admin'?adminV(): homeV();
   let top = curProfile? `<div class="logo grow"><b>hamet</b><i>kro</i><small>${esc(curProfile.country||"Côte d'Ivoire")} ${(curProfile.countryCode==='CI'||!curProfile.countryCode)?'🇨🇮':'🌍'} · ${esc(curProfile.city||'')}</small></div>
-      <div style="text-align:right;font-size:11px;color:var(--grey)">${esc((curProfile.name||'Compte').split(' ')[0])} ${isAdmin()?'<span class="badge">ADMIN</span>':''}</div>`
+      <div style="display:flex;align-items:center;gap:10px">
+        <div style="text-align:right;font-size:11px;color:var(--grey)">${esc((curProfile.name||'Compte').split(' ')[0])} ${isAdmin()?'<span class="badge">ADMIN</span>':''}</div>
+        <div style="position:relative;cursor:pointer" onclick="openNotifs()"><span style="font-size:22px">🔔</span>
+          ${notifUnread>0?`<span style="position:absolute;top:-4px;right:-6px;background:var(--sang);color:#fff;font-size:9px;font-weight:800;border-radius:50%;min-width:17px;height:17px;display:flex;align-items:center;justify-content:center;padding:0 3px">${notifUnread}</span>`:''}</div>
+      </div>`
     : `<div class="logo grow"><b>hamet</b><i>kro</i><small>Côte d'Ivoire 🇨🇮 · navigation libre</small></div>
       <button class="btn g sm" onclick="openAuth()">Se connecter</button>`;
   let items=[['home','🏠','Accueil'],['sell','🗂️','Vendre'],['me','👤','Compte']]
@@ -228,9 +295,21 @@ function homeV(){
     <div class="catRow">${CATS.map(c=>`<div class="catCell" onclick="setCat('${c.id}')"><div class="e">${c.e}</div><span>${c.n}</span></div>`).join('')}</div></div>`;
   let searchChips = `<div class="search"><span class="ic">🔍</span><input class="input" id="q" placeholder="Rechercher un article…" value="${esc(q)}" oninput="q=this.value;shell()"></div>
     <div class="chips"><div class="chip ${catF==='all'?'on':''}" onclick="setCat('all')">Tout</div>${CATS.map(c=>`<div class="chip ${catF===c.id?'on':''}" onclick="setCat('${c.id}')">${c.e} ${c.n}</div>`).join('')}</div>`;
+  // --- NOUVEAUTÉS mises en avant : annonces récentes (< 48h), bandeau scrollable
+  let featured='';
+  if(catF==='all' && !q){
+    const fresh=allListings.filter(l=>!l.sold && (Date.now()-l.time)<48*3600*1000).sort((a,b)=>b.time-a.time);
+    if(fresh.length){
+      featured=`<div class="featureWrap"><div class="sectionTitle" style="padding-top:12px"><h3>🔥 Nouveautés</h3><a onclick="setCat('all')">Nouveau</a></div>
+      <div class="featured">${fresh.slice(0,12).map(f=>{let im=firstImg(f);return `<div class="fcard ${f.time>(Date.now()-24*3600*1000)?'on':''}" onclick="detail('${f.id}')">
+        <div class="fimg">${im?`<img src="${esc(im)}">`:`<span class="e">${catOf(f.cat).e}</span>`}</div>
+        <span class="nbadge">NOUVEAU</span>${f.time>(Date.now()-24*3600*1000)?'<span class="promo">✨ 24h</span>':''}
+        <div class="fbd"><div class="ft">${esc(f.t)}</div><div class="fp">${fmt(f.p)} FCFA</div></div></div>`;}).join('')}</div></div>`;
+    }
+  }
   let title = catF!=='all' ? `<div class="sectionTitle"><h3>${catOf(catF).e} ${catOf(catF).n}</h3><a onclick="setCat('all')">Tout voir</a></div>` : `<div class="sectionTitle"><h3>Annonces récentes</h3></div>`;
   let cards=list.length?`<div class="grid">${list.map(tile).join('')}</div>`:`<div class="center cardp muted">Aucun article pour le moment.</div>`;
-  return hero+catSection+searchChips+title+cards;
+  return hero+featured+catSection+searchChips+title+cards;
 }
 function setCat(id){catF=id;shell();}
 function firstImg(l){return (l.photos&&l.photos.length)?l.photos[0]:(l.img||'');}
@@ -257,6 +336,40 @@ function galleryHtml(l,id){
   </div><div class="dots">${dots}</div>`;
 }
 function galleryGo(id,dir){galIndex[id]=((galIndex[id]||0)+dir+100)%100;detail(id);}
+// ===== PAGE VENDEUR DÉTAILLÉE =====
+async function openSeller(sid){ closeAll();
+  const mine = curProfile && curProfile.uid===sid;
+  const seller = await getSeller(sid);
+  const sellerName = seller? seller.name : (sid==='u_demo'?'Adja Shop':'Vendeur');
+  const sellerCity = seller? seller.city : 'Abidjan';
+  const sellerJoined = seller? (seller.created||null) : null;
+  const sellerEmail = seller? seller.email : '';
+  const myItems = allListings.filter(l=>l.sellerId===sid && !l.sold);
+  const soldCount = allListings.filter(l=>l.sellerId===sid && l.sold).length;
+  // stats vendeur
+  const asSeller = txCache.filter(t=>t.sellerId===sid && t.status==='done');
+  const rating = seller && seller.rating ? seller.rating : '4.8';
+  const sales = asSeller.length || soldCount;
+  const joinedTxt = sellerJoined? ('Membre depuis '+new Date(sellerJoined).getFullYear()) : '';
+  const head = `<div class="hero" style="border-radius:0;padding:20px 16px">
+     <div style="display:flex;gap:14px;align-items:center;position:relative">
+       <div style="width:66px;height:66px;border-radius:50%;background:rgba(255,255,255,.25);display:flex;align-items:center;justify-content:center;font-size:30px;border:2px solid #fff">${mine?'👤':'🛍️'}</div>
+       <div style="flex:1;color:#fff"><div style="font-size:20px;font-weight:900">${esc(sellerName)} ${seller&&seller.role==='admin'?'<span style="font-size:10px;background:#fff;color:var(--grn);padding:2px 7px;border-radius:8px">ADMIN</span>':''}</div>
+         <div style="font-size:12px;opacity:.95">📍 ${esc(sellerCity)} · ${esc(joinedTxt)}</div>
+         <div style="font-size:12px;margin-top:6px">${esc(sellerEmail?sellerEmail:'Vendeur vérifié par Hametkro')}</div></div>
+     </div>
+     <div style="display:flex;gap:10px;margin-top:14px;position:relative">
+       <div class="badge-chip">⭐ ${rating} note</div><div class="badge-chip">✅ ${sales} vente${sales>1?'s':''}</div><div class="badge-chip">🛒 ${myItems.length} en vente</div>
+     </div>
+   </div>`;
+  const sellerItems = myItems.length ? `<div style="padding:6px 12px"><h3 style="margin:12px 2px 8px">Ses annonces</h3><div class="grid" style="padding-top:4px">${myItems.map(tile).join('')}</div></div>` : '<p class="muted center" style="padding:30px">Ce vendeur n\'a pas d\'article en vente actuellement.</p>';
+  let actions='';
+  if(!mine && curProfile && curProfile.uid!==sid){ actions=`<div style="padding:4px 14px"><button class="btn g" onclick="toast('Contacte le vendeur depuis l\'une de ses annonces')">💬 Contacter ${esc(sellerName)}</button></div>`; }
+  else if(!mine && !curProfile){ actions=`<div style="padding:4px 14px"><button class="btn g" onclick="openAuth()">Se connecter pour contacter</button></div>`; }
+  if(mine){ actions=`<div style="padding:4px 14px"><button class="btn ghost" onclick="view='me';shell()">C\'est ton profil</button></div>`; }
+  renderApp(`<div class="topbar"><div class="logo grow"><b>hamet</b><i>kro</i></div><button class="btn g sm" onclick="view='home';shell()">← Accueil</button></div>${head}${sellerItems}${actions}<div style="height:30px"></div>`);
+  document.documentElement.scrollTop=0;
+}
 function detail(id){let l=allListings.find(x=>x.id===id);if(!l)return;
  let mine=curProfile&&l.sellerId===curProfile.uid;
  let img=galleryHtml(l,id);
@@ -266,7 +379,7 @@ function detail(id){let l=allListings.find(x=>x.id===id);if(!l)return;
   <div class="muted">📍 ${esc(l.city||'')}, Côte d'Ivoire · ${timeago(l.time)}</div>
   <div style="font-size:25px;font-weight:900;color:var(--grn);margin:8px 0">${fmt(l.p)} FCFA <span class="chip on" style="font-size:10px;vertical-align:middle;cursor:default">${esc(l.cond||'')}</span></div>
   <div class="box"><b>Description</b><p class="muted" style="margin:5px 0;font-size:13px">${esc(l.d||"Vendeur de confiance. Remise en main propre, paiement à la réception — jamais d'avance.")}</p></div>
-  <div class="box" style="display:flex;gap:10px;align-items:center"><div class="av">🛍️</div><div class="grow"><b>${esc(l.sellerName||'Vendeur')}</b><br><span class="muted">Vendeur ${esc(l.city||'')}</span></div><span class="badge">Vérifié</span></div>
+  <div class="box" style="display:flex;gap:10px;align-items:center;cursor:pointer" onclick="closeAll();openSeller('${l.sellerId}')"><div class="av">🛍️</div><div class="grow"><b>${esc(l.sellerName||'Vendeur')}</b><br><span class="muted">Vendeur ${esc(l.city||'')} · voir profil →</span></div><span class="badge">Vérifié</span></div>
   ${mine?'<div class="info">C\'est ton article.</div>':
     `<button class="btn g" onclick="curUser?startContact('${l.id}'):openAuth('sell')">💬 Contacter le vendeur</button>
      <div class="info" style="text-align:center">🔒 Achat sécurisé : validation mutuelle. Commission ${Math.round(COMM_RATE*100)}%.</div>`}
@@ -401,8 +514,10 @@ async function resolve(id){let ref=db.collection('transactions').doc(id);let d=a
 /* ============== ÉCOUTE DES DONNÉES (Firestore temps réel) ============== */
 let txCache=[];
 function listenListings(){db.collection('listings').orderBy('time','desc').onSnapshot(snap=>{allListings=snap.docs.map(d=>d.data());boot();},err=>{renderApp(`<div class="load"><div style="font-size:46px">⚠️</div><div>Impossible de lire les annonces.<br><span class="muted">Vérifie que Firestore est activé et les règles publiées.</span></div><div>${esc(err&&err.message||'')}</div></div>`);});}
-function listenTx(){auth.onAuthStateChanged(u=>{ if(!u){txCache=[];return;}
-  db.collection('transactions').where('participants','array-contains',u.uid).onSnapshot(snap=>{txCache=snap.docs.map(d=>d.data());if(view==='sell'||view==='admin')boot();}); });}
+function listenTx(){auth.onAuthStateChanged(u=>{ if(!u){txCache=[];notifsCache=[];notifUnread=0;return;}
+  db.collection('transactions').where('participants','array-contains',u.uid).onSnapshot(snap=>{txCache=snap.docs.map(d=>d.data());buildNotifs(u.uid);if(view==='sell'||view==='admin'||view==='home')boot();}); });}
+// Reconstruit aussi les notifs au chargement initial d'un utilisateur connecté.
+function afterAuthRebuild(u){ if(u) setTimeout(()=>buildNotifs(u.uid),400); }
 
 /* ============== INSTALLATION PWA ============== */
 let deferredPrompt=null;
