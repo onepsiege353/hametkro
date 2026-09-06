@@ -188,6 +188,14 @@ if ('serviceWorker' in navigator) {
   .sendBtn{background:linear-gradient(135deg,#129452,#0E7A44);color:#fff;border:none;border-radius:50%;width:48px;height:48px;font-size:20px;cursor:pointer;flex:none;box-shadow:0 8px 16px -8px rgba(14,122,68,.6)}
   .daysep{text-align:center;font-size:10px;color:var(--grey2);margin:10px 0 4px;font-weight:700;letter-spacing:.4px;text-transform:uppercase}
   .unreadDot{width:9px;height:9px;border-radius:50%;background:var(--sang);flex:none}
+  mark{background:#F6C453;color:#14261E;border-radius:3px;padding:0 2px}
+  .chatCtx{display:flex;gap:10px;align-items:center;padding:8px 12px;background:#fff;border-bottom:1px solid var(--line)}
+  .ctxTh{width:42px;height:42px;border-radius:10px;object-fit:cover;flex:none;overflow:hidden;background:linear-gradient(160deg,#E3F3E9,#FBEEDC);display:flex;align-items:center;justify-content:center;font-size:22px}
+  .ctxTh img{width:100%;height:100%;object-fit:cover}
+  .csbar{display:none;align-items:center;gap:8px;padding:6px 12px;background:#fff;border-bottom:1px solid var(--line)}
+  .quickPanel{display:none;background:#fff;border-top:1px solid var(--line);padding:6px 10px;max-height:40vh;overflow:auto}
+  .qr{border:1px solid var(--line2);background:#fff;border-radius:11px;padding:8px 10px;margin:4px 0;font-size:12.5px;cursor:pointer;color:var(--ink)}
+  .qr:hover{background:var(--grn-soft);border-color:#C4E3D2}
   /* ===== Premium onboarding / auth ===== */
   .authHero{background:radial-gradient(120% 160% at 15% -8%,#1C9E63 0%,#0E7A44 46%,#075231 100%);border-radius:0 0 30px 30px;padding:34px 22px 26px;color:#fff;text-align:center;position:relative;overflow:hidden}
   .authHero::after{content:"";position:absolute;right:-70px;top:-70px;width:250px;height:250px;border-radius:50%;background:radial-gradient(circle,rgba(255,255,255,.16),transparent 60%)}
@@ -838,7 +846,8 @@ async function publish(pid){let t=val(pid+'_t').trim(),p=parseFloat(val(pid+'_p'
 // écran : tous les snapshots "globaux" (listings, transactions, conversations)
 // DOIVENT alors ignorer leur ré-affichage pour ne pas éjecter l'utilisateur du
 // chat (bug corrigé).
-let convCache=[], msgUnread=0, chatUnsub=null, _activeCid=null, _convData=null;
+let convCache=[], msgUnread=0, chatUnsub=null, _activeCid=null, _convData=null, _convSearch='';
+let _pendingMsgs=[]; // messages encore en cours de confirmation serveur (écho optimiste)
 function convIdKey(a,b,item){return [a,b].sort().join('__')+'__'+item;}
 function otherName(c){ return curProfile && (c.participants||[]).find(p=>p.uid!==curProfile.uid); }
 function mySeen(c){return c&&c.seen&&curProfile ? (c.seen[curProfile.uid]||0):0;}
@@ -860,13 +869,19 @@ function messagesV(){ if(!curProfile) return `<div class="hdr"><h2>Messages</h2>
    ${needsReplyHtml()}
    <div style="padding:4px 12px 40px">${sorted.map(c=>{const o=otherName(c);const u=unreadOf(c);
      const last=(c.msgs&&c.msgs.length)?c.msgs[c.msgs.length-1]:null;
+     const it=(allListings||[]).find(x=>x.id===c.itemId);
+     const itemTxt = it? it.t : (c.itemTitle||'');
+     const iem=`${catOf(it&&it.cat||'fashion').e} ${esc(itemTxt)}`;
+     const soldTag = it&&it.sold?`<span class="badge" style="background:var(--grey2)">vendu</span>`:'';
+     const off=(c.offer&&(c.offer.status==='sent'||c.offer.status==='accepted'))?c.offer:null;
+     const offerChip = off ? `<span class="badge" style="background:${off.status==='accepted'?'var(--grn)':'var(--gold)'};margin-left:4px">${off.status==='accepted'?'✓ prix accepté':'💰 offre'}</span>` : '';
      return `<div class="chatItem" onclick="openConv('${c.id}')">
       <div class="av" style="background:linear-gradient(160deg,#E3F3E9,#FBEEDC)">🛍️</div>
       <div class="grow"><div style="display:flex;justify-content:space-between;align-items:center">
         <b style="font-size:14px">${esc(o?o.name:'Vendeur')}</b><span class="muted" style="font-size:10px">${timeago(c.lastAt)}</span></div>
-        <div style="font-size:12px;color:var(--grn);font-weight:600">${esc(c.itemTitle||'')}</div>
-        <div style="display:flex;justify-content:space-between;align-items:center"><span class="muted" style="font-size:12px">${esc(last?(last.uid===curProfile.uid?'Vous : ':'')+last.text:'Nouvelle discussion')}</span>
-        ${u?`<span style="background:var(--org);color:#fff;font-size:9px;font-weight:800;border-radius:50%;min-width:17px;height:17px;display:flex;align-items:center;justify-content:center;padding:0 3px">${u}</span>`:''}</div></div>
+        <div style="font-size:12px;color:var(--grn);font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${iem} ${soldTag}${offerChip}</div>
+        <div style="display:flex;justify-content:space-between;align-items:center"><span class="muted" style="font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(last?(last.uid===curProfile.uid?'Vous : ':'')+last.text:'Nouvelle discussion')}</span>
+        ${u?`<span style="background:var(--org);color:#fff;font-size:9px;font-weight:800;border-radius:50%;min-width:17px;height:17px;display:flex;align-items:center;justify-content:center;padding:0 3px;flex:none">${u}</span>`:''}</div></div>
       </div>`;}).join('')}</div>`; }
 // Ouvre / crée une conversation avec le vendeur d'une annonce.
 async function openChatFromListing(id){ if(!curProfile) return openAuth();
@@ -894,51 +909,184 @@ function convMarkSeen(cid,data){ if(!curProfile)return; const seen=Object.assign
   const c=convCache.find(x=>x.id===cid); if(c){ c.seen=seen;
     msgUnread=convCache.reduce((s,x)=>s+unreadOf(x),0);
     if(!chatIsOpen() && view==='msg') shell(); } }
-function convBubbles(c){ const me=curProfile?curProfile.uid:null; const msgs=(c&&c.msgs)||[];
-  if(!msgs.length) return `<p class="muted center" style="padding:30px 0">Dites bonjour 👋</p>`;
-  let lastDay=''; let out='';
+function otherUid(c){ const o=otherName(c); return o?o.uid:null; }
+function fmtClock(t){ if(!t)return ''; const d=new Date(t); return pad2(d.getHours())+':'+pad2(d.getMinutes()); }
+function convItem(){ const c=_convData; if(!c)return null; return (allListings||[]).find(l=>l.id===c.itemId)||null; }
+// Indicateur "en train d'écrire…" : écritures limitées (début + fin de saisie).
+let _typingActive=false, _typingTimer=null;
+function chatTypingStart(){ if(!_activeCid||!curProfile)return;
+  if(!_typingActive){ _typingActive=true;
+    db.collection('conversations').doc(_activeCid).update({typing:{uid:curProfile.uid,at:Date.now()}}).catch(()=>{}); }
+  if(_typingTimer)clearTimeout(_typingTimer);
+  _typingTimer=setTimeout(chatTypingStop, 3500); }
+function chatTypingStop(){ if(!_activeCid)return; _typingActive=false;
+  if(_typingTimer){clearTimeout(_typingTimer);_typingTimer=null;}
+  db.collection('conversations').doc(_activeCid).update({typing:{uid:'',at:0}}).catch(()=>{}); }
+// Surlignage insensible à la casse d'un terme (texte déjà échappé).
+function escRe(x){ return x.replace(/[.*+?^${}()|[\]\\]/g,'\\$&'); }
+function markHl(text,q){ if(!q) return text; try{ return text.replace(new RegExp('('+escRe(q)+')','ig'),'<mark>$1</mark>'); }catch(e){ return text; } }
+function convBubbles(c,q){ const me=curProfile?curProfile.uid:null; const s=(q||'').trim().toLowerCase();
+  let msgs=(c&&c.msgs)||[];
+  if(s) msgs=msgs.filter(m=>((m.text||'').toLowerCase().includes(s)));
+  if(!msgs.length) return s?`<p class="muted center" style="padding:30px 0">Aucun résultat pour « ${esc(q)} » 🔍</p>`:`<p class="muted center" style="padding:30px 0">Dites bonjour 👋</p>`;
+  const otherU=otherUid(c); const otherSeen= (otherU&&c&&c.seen)?(c.seen[otherU]||0):0;
+  let lastDay=''; let out=''; let prevMine=null;
   msgs.forEach(m=>{ const day=new Date(m.time).toDateString();
     if(day!==lastDay){ out+=`<div class="daysep">${new Date(m.time).toLocaleDateString('fr-FR',{weekday:'long',day:'numeric',month:'long'})}</div>`; lastDay=day; }
     const mine=m.uid===me;
-    out+=`<div class="bubble ${mine?'me':'them'}">${m.img?`<img src="${esc(m.img)}" style="max-width:190px;max-height:240px;border-radius:12px;display:block">`:''}${m.text&&!m.img?esc(m.text):''}${m.text&&m.img?`<div style="font-size:10px;opacity:.8;margin-top:2px">${esc(m.text)}</div>`:''}<span class="bt">${mine?'vous':esc(m.name||'')} · ${timeago(m.time)}</span></div>`; });
+    const mt = prevMine===mine ? 2 : 6;
+    const imgHtml = m.img?`<img src="${esc(m.img)}" style="max-width:190px;max-height:240px;border-radius:12px;display:block">`:'';
+    const capHtml = (m.text&&m.img)?`<div style="font-size:10px;opacity:.85;margin-top:2px">${markHl(esc(m.text),s)}</div>`:'';
+    const txtHtml = (m.text&&!m.img)?markHl(esc(m.text),s):'';
+    let meta='';
+    if(mine){ const read = otherSeen && m.time<=otherSeen;
+      meta=`<span style="font-size:9.5px">${timeago(m.time)} ${read?'<span style="color:#C9F5DE;font-weight:800">✓✓</span>':'<span style="opacity:.75">✓</span>'}</span>`; }
+    else { meta=`<span style="font-size:9.5px">${esc(m.name||'')} · ${fmtClock(m.time)}</span>`; }
+    out+=`<div class="bubble ${mine?'me':'them'}" style="margin-top:${mt}px;${mine?'':'border-top-left-radius:'+(mt>2?'18px':'8px')+';'}${mine?'border-top-right-radius:'+(mt>2?'18px':'8px')+';':''}">${imgHtml}${txtHtml}${capHtml}<span class="bt">${meta}</span></div>`;
+    prevMine=mine; });
   return out; }
 // Ouverture : affiche l'écran de chat une fois, puis met à jour UNIQUEMENT la
 // zone des bulles (on ne re-rend jamais le champ de saisie => pas de perte).
 async function openConv(cid){ if(!curProfile) return openAuth();
   const ref=db.collection('conversations').doc(cid);
   const d=await ref.get(); if(!d.exists) return;
-  _convData=d.data(); _activeCid=cid; _convRef=ref;
+  _convData=d.data(); _activeCid=cid; _convRef=ref; _convSearch=''; _pendingMsgs=[];
   var _sh=document.querySelector('.shell'); if(_sh)_sh.classList.add('nopad');
   convMarkSeen(cid,_convData);
-  const o=otherName(_convData); const name=esc(o?o.name:'Vendeur');
-  renderApp(`<div class="chatHead"><button class="btn ghost sm" onclick="closeConv()">←</button>
-    <div class="grow"><b>${name}</b><div class="muted" style="font-size:11px">🛍️ ${esc(_convData.itemTitle||'')}</div></div>
-    <span id="chatOtherBadge" class="badge" style="background:var(--grey2)">…</span></div>
-    <div class="chatBox" id="convSc">${convBubbles(_convData)}</div>
+  const o=otherName(_convData); const otherU=otherUid(_convData); const otherNameRaw=(o?o.name:'Vendeur');
+  const name=esc(otherNameRaw);
+  const item=convItem(); const mine= item && item.sellerId===curProfile.uid;
+  const isBuyerSide = !!(item && !mine && !item.sold);
+  const itemLive = !!(item && !item.sold);
+  const ctxBar = item ? `<div class="chatCtx" onclick="closeAll();detail('${item.id}')">
+      <div class="ctxTh">${firstImg(item)?`<img src="${esc(firstImg(item))}">`:`<span style="font-size:20px">${catOf(item.cat).e}</span>`}</div>
+      <div class="grow" style="min-width:0">
+        <div style="font-weight:700;font-size:12.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(item.t)}</div>
+        <div style="font-size:11px;color:var(--grey)">${fmt(item.p)} FCFA${item.city?(' · 📍 '+esc(item.city)):''}</div>
+      </div>
+      <span class="badge" style="background:${itemLive?'var(--grn)':'var(--grey2)'};flex:none">${itemLive?'Disponible':'Vendu'}</span>
+    </div>` : '';
+  const quick = isBuyerSide&&item ? `<div style="display:flex;gap:6px;padding:6px 10px;background:#fff;border-bottom:1px solid var(--line)">
+      <button class="btn ghost sm" style="flex:1;padding:8px 10px" onclick="chatCta('tx')">🛡️ Transaction</button>
+      <button class="btn ghost sm" style="flex:1;padding:8px 10px" onclick="chatCta('offer')">🤝 Proposer un prix</button>
+    </div>` : '';
+  const avatarDot = `<div id="chatAvatar" style="width:42px;height:42px;flex:none;border-radius:50%;background:linear-gradient(160deg,#E3F3E9,#FBEEDC);display:flex;align-items:center;justify-content:center;font-size:20px;position:relative;border:2px solid var(--line2);transition:border-color .3s">🛍️</div>`;
+  renderApp(`<div style="height:100dvh;height:100svh;display:flex;flex-direction:column;background:var(--bg);overflow:hidden">
+    <div class="chatHead">
+      <button class="btn ghost sm" onclick="closeConv()">←</button>
+      ${avatarDot}
+      <div class="grow" style="min-width:0">
+        <div class="row"><b style="font-size:15px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${name}</b><span id="chatVerified"></span></div>
+        <div id="chatStatus" class="muted" style="font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">🛍️ ${esc(_convData.itemTitle||'')}</div>
+      </div>
+      <div style="display:flex;align-items:center;flex:none;gap:2px">
+        ${item?`<span style="font-size:12px;font-weight:800;color:var(--grn);cursor:pointer;padding:8px 2px" onclick="detail('${item.id}')">Voir</span>`:''}
+        <span id="searchTgl" title="Chercher dans la conversation" style="font-size:17px;cursor:pointer;padding:8px 4px" onclick="toggleConvSearch()">🔍</span>
+      </div>
+    </div>
+    <div class="csbar" id="csBar">
+      <span id="csCount" style="font-size:10.5px;color:var(--grey);font-weight:700;white-space:nowrap"></span>
+      <input id="csq" class="input" style="margin:0;flex:1;padding:9px 12px" placeholder="Chercher dans la conversation…" autocomplete="off" oninput="applyConvSearch(this.value)">
+      <span style="cursor:pointer;font-size:15px;color:var(--grey);padding:4px" onclick="toggleConvSearch()">✕</span>
+    </div>
+    ${ctxBar}
+    ${quick}
+    <div style="flex:1;position:relative;display:flex;min-height:0">
+      <div class="chatBox" id="convSc" style="position:absolute;inset:0;height:auto;max-height:none">${convBubbles(_convData)}</div>
+      <div id="newMsgPill" style="display:none;position:absolute;left:50%;transform:translateX(-50%);bottom:12px;background:var(--grn);color:#fff;padding:8px 16px;border-radius:999px;font-size:12px;font-weight:700;cursor:pointer;box-shadow:0 6px 16px rgba(0,0,0,.25);white-space:nowrap;z-index:5" onclick="jumpConv()">↓ nouveaux messages</div>
+    </div>
     <div id="offerArea">${offerBannerHTML(_convData?_convData.offer:null)}</div>
-    <div class="chatInput"><input type="file" id="chatFile" accept="image/*" style="display:none" onchange="chatOnPhoto(this)">
-    <button class="sendBtn" style="background:linear-gradient(135deg,#FB8B24,#F07A1E)" title="Envoyer une photo" onclick="document.getElementById('chatFile').click()">📷</button>
-    <input id="msgText" class="input" autocomplete="off" placeholder="Écris un message…" onkeydown="if(event.key==='Enter'){sendMsg();event.preventDefault();}">
-    <button class="sendBtn" onclick="sendMsg()">➤</button></div>`);
-  scrollConv();
-  renderOfferArea(); loadChatOther();
+    <div class="quickPanel" id="quickPanel"></div>
+    <div class="chatInput">
+      <input type="file" id="chatFile" accept="image/*" style="display:none" onchange="chatOnPhoto(this)">
+      <button class="sendBtn" style="background:#fff;border:1px solid var(--line2);font-size:17px" title="Photos & messages types" onclick="openQuickMenu()">＋</button>
+      <button class="sendBtn" style="background:linear-gradient(135deg,#FB8B24,#F07A1E)" title="Envoyer une photo" onclick="document.getElementById('chatFile').click()">📷</button>
+      <input id="msgText" class="input" autocomplete="off" placeholder="Écris un message…" oninput="chatTypingStart()" onblur="chatTypingStop()" onkeydown="if(event.key==='Enter'){sendMsg();event.preventDefault();}">
+      <button class="sendBtn" onclick="sendMsg()">➤</button>
+    </div>
+  </div>`);
+  scrollConv(); hideNewPill();
+  const scEl=document.getElementById('convSc'); if(scEl) scEl.addEventListener('scroll',()=>{ if(convAtBottom())hideNewPill(); });
+  renderOfferArea(); refreshChatMeta(); loadChatOther();
+  if(_metaTimer)clearInterval(_metaTimer);
+  _metaTimer=setInterval(()=>{ refreshChatMeta(); loadChatOther(); }, 20000);
   function renderOfferArea(){ const el=document.getElementById('offerArea'); if(el) el.innerHTML=offerBannerHTML(_convData?_convData.offer:null); }
-  async function loadChatOther(){ const o=otherName(_convData); const el=document.getElementById('chatOtherBadge'); if(!el)return;
-    if(!o) return; let p=null; try{ const d=await db.collection('users').doc(o.uid).get(); p=d.exists?d.data():null; }catch(e){}
-    if(el) el.innerHTML=verifiedBadge(p); }
+  function refreshChatMeta(){ const st=document.getElementById('chatStatus'); if(!st)return;
+    const t=_convData&&_convData.typing;
+    if(t&&t.uid&&t.uid!==(curProfile&&curProfile.uid)&&(Date.now()-t.at)<5000){ st.innerHTML='<span style="color:var(--grn);font-style:italic">✍️ '+name+' écrit…</span>'; return; }
+    async function fill(){ const prof=await getSeller(otherU); if(!st)return;
+      if(prof&&prof.presence){ st.innerHTML = isOnline(prof)?'<span class="pres"><i class="dot"></i>En ligne</span>':'<span class="pres off"><i class="dot"></i>Vu '+timeago(prof.presence)+'</span>'; }
+      else { st.innerHTML='🛍️ '+(esc(_convData?(_convData.itemTitle||''):'')); }
+      const av=document.getElementById('chatAvatar'); if(av){ av.style.borderColor = (prof&&isOnline(prof))? 'var(--grn)':'var(--line2)'; }
+    }
+    fill(); }
+  async function loadChatOther(){ const el=document.getElementById('chatVerified'); if(!el)return;
+    const prof=await getSeller(otherU); if(el) el.innerHTML=prof?verifiedBadge(prof):'';
+    const av=document.getElementById('chatAvatar'); if(av) av.style.borderColor=(prof&&isOnline(prof))?'var(--grn)':'var(--line2)'; }
   if(chatUnsub)chatUnsub();
   chatUnsub=ref.onSnapshot(snap=>{ if(!snap.exists)return; const prev=_convData; _convData=snap.data();
+    // Réconcilie avec les envois optimistes pas encore confirmés (évite tout retour en arrière visuel).
+    (_pendingMsgs||[]).forEach(pm=>{ if(!(_convData.msgs||[]).some(m=>m.uid===pm.uid&&m.time===pm.time)) _convData.msgs=[...(_convData.msgs||[]),pm]; });
     const wasAtBottom=convAtBottom();
-    const sc=document.getElementById('convSc'); if(sc) sc.innerHTML=convBubbles(_convData);
-    if(convAtBottom()===false && (prev&&(_convData.msgs||[]).length>(prev.msgs||[]).length)) { /* message entrant en bas de page */ }
-    if(wasAtBottom||prev==null) scrollConv();
-    renderOfferArea(); convMarkSeen(cid,_convData); });
+    const sc=document.getElementById('convSc'); if(sc) sc.innerHTML=convBubbles(_convData,_convSearch||'');
+    const newIn = prev&&(_convData.msgs||[]).length>(prev.msgs||[]).length;
+    if(newIn && !wasAtBottom){ showNewPill(); } else if(newIn && wasAtBottom){ scrollConv(); }
+    if(!newIn && (wasAtBottom||prev==null)) scrollConv();
+    updateCsCount();
+    renderOfferArea(); refreshChatMeta();
+    if(unreadOf(_convData)>0) convMarkSeen(cid,_convData); });
 }
-let _convRef=null;
+/* --- Recherche dans le fil de discussion --- */
+function updateCsCount(){ const cc=document.getElementById('csCount'); if(!cc)return;
+  cc.textContent = _convSearch ? convMatchCount(_convSearch)+' résultat(s)' : ''; }
+function convMatchCount(q){ q=(q||'').trim().toLowerCase(); if(!q)return 0;
+  return ((_convData&&_convData.msgs)||[]).filter(m=>((m.text||'').toLowerCase().includes(q))).length; }
+function toggleConvSearch(){ const bar=document.getElementById('csBar'); if(!bar)return;
+  const on = bar.style.display!=='flex';
+  bar.style.display = on ? 'flex':'none';
+  if(!on){ _convSearch=''; const qe=document.getElementById('csq'); if(qe)qe.value=''; }
+  updateCsCount();
+  const sc=document.getElementById('convSc'); if(sc) sc.innerHTML=convBubbles(_convData,_convSearch||'');
+  scrollConv();
+  if(on){ const qe=document.getElementById('csq'); if(qe) setTimeout(()=>qe.focus(),60); } }
+function applyConvSearch(v){ _convSearch=v; updateCsCount();
+  const sc=document.getElementById('convSc'); if(sc) sc.innerHTML=convBubbles(_convData,_convSearch||''); }
+/* --- Messages types (réponses rapides professionnelles) --- */
+function quickReplies(){ const it=convItem();
+  if(it && curProfile && it.sellerId===curProfile.uid){
+    return ['Bonjour 👋 Oui, l\'article est toujours disponible.',
+      'Il est toujours dispo. Remise en main propre ou livraison possible.',
+      'Le prix affiché est ma base — on peut en discuter raisonnablement.',
+      'D\'accord pour ce prix 👍 Je te propose de passer par la transaction sécurisée Hametkro.',
+      'Je ne demande jamais d\'avance : tout se règle à la remise.']; }
+  return ['Bonjour 👋 L\'article est-il toujours disponible ?',
+    'Peux-tu m\'envoyer plus de photos ou détails ?',
+    'Est-ce possible de descendre un peu sur le prix ?',
+    'D\'accord pour ce prix, lançons une transaction sécurisée.',
+    'Quand et où peut-on faire la remise / livraison ?']; }
+function quickSectionLabel(){ const it=convItem();
+  return (it&&curProfile&&it.sellerId===curProfile.uid)?'⚡ Réponses types vendeur':'⚡ Messages rapides'; }
+function openQuickMenu(){ const p=document.getElementById('quickPanel'); if(!p)return;
+  const on = p.style.display!=='block';
+  if(on){ p.style.display='block';
+    p.innerHTML=`<div style="display:flex;justify-content:space-between;align-items:center;padding:2px 2px 4px"><b style="font-size:12.5px">${quickSectionLabel()}</b><span style="cursor:pointer;color:var(--grey);font-size:13px" onclick="openQuickMenu()">✕</span></div>
+      ${quickReplies().map((r,i)=>`<div class="qr" onclick="quickFill(${i})">${esc(r)}</div>`).join('')}`; }
+  else { p.style.display='none'; p.innerHTML=''; } }
+function quickFill(i){ const r=(quickReplies()||[])[i]; if(r==null)return;
+  const inp=document.getElementById('msgText'); if(!inp)return;
+  inp.value=r; const p=document.getElementById('quickPanel'); if(p){ p.style.display='none'; p.innerHTML=''; }
+  inp.focus(); chatTypingStart(); }
+function chatCta(kind){ if(!_activeCid)return; const it=convItem(); if(!it)return toast('Article plus disponible');
+  if(kind==='offer') proposeSheet(it.id); else startContact(it.id); }
+function showNewPill(){ const el=document.getElementById('newMsgPill'); if(el) el.style.display='block'; }
+function hideNewPill(){ const el=document.getElementById('newMsgPill'); if(el) el.style.display='none'; }
+function jumpConv(){ scrollConv(); hideNewPill(); }
+let _convRef=null; let _metaTimer=null;
 function convScroller(){return document.getElementById('convSc');}
 function convAtBottom(){ const b=convScroller(); if(!b)return true; return b.scrollHeight-b.scrollTop-b.clientHeight<40; }
 function scrollConv(){ setTimeout(()=>{const b=convScroller(); if(b)b.scrollTop=b.scrollHeight;},20); }
-function closeConv(){ if(chatUnsub)chatUnsub(); chatUnsub=null; _activeCid=null; _convData=null; _convRef=null;
+function closeConv(){ if(chatUnsub)chatUnsub(); chatUnsub=null; chatTypingStop(); _activeCid=null; _convData=null; _convRef=null; _pendingMsgs=[];
+  if(_metaTimer){ clearInterval(_metaTimer); _metaTimer=null; }
   var _sh=document.querySelector('.shell'); if(_sh)_sh.classList.remove('nopad'); view='msg';shell(); }
 let _chatImg=null;
 // Photo choisie dans le chat : compression puis envoi.
@@ -948,20 +1096,34 @@ function chatOnPhoto(inp){ const f=inp.files&&inp.files[0]; inp.value=''; if(!f|
       const cv=document.createElement('canvas'); cv.width=Math.max(1,Math.round(img.width*m)); cv.height=Math.max(1,Math.round(img.height*m));
       cv.getContext('2d').drawImage(img,0,0,cv.width,cv.height); _chatImg=cv.toDataURL('image/jpeg',.72); sendMsg(); };
     img.src=r.result; }; r.readAsDataURL(f); }
-async function sendMsg(){ const inp=document.getElementById('msgText'); const txt=inp?inp.value.trim():'';
+function sendMsg(){ const inp=document.getElementById('msgText'); const txt=inp?inp.value.trim():'';
   const img=_chatImg; if((!txt&&!img)||!_activeCid) return;
-  if(inp) inp.value=''; _chatImg=null;
-  const msg={uid:curProfile.uid,name:curProfile.name,time:Date.now()};
+  if(inp) inp.value=''; _chatImg=null; chatTypingStop();
+  const now=Date.now();
+  const msg={uid:curProfile.uid,name:curProfile.name,time:now};
   msg.text = img? (txt||'📷 Photo') : txt;
   if(img) msg.img=img;
-  try{
-    // Ajout ATOMIQUE côté serveur (arrayUnion) : évite la perte de messages en
-    // cas d'envoi simultané par les deux interlocuteurs (bug corrigé).
-    const fv=firebase.firestore.FieldValue;
-    await _convRef.update({msgs:fv.arrayUnion(msg),lastAt:Date.now(),lastMsg:msg.text});
-    // Marque lu immédiatement après l'envoi (badge non-lu ne reste pas actif).
+  // Écho OPTIMISTE : on affiche ton message immédiatement (aucune attente réseau),
+  // puis on le confirme côté Firestore. Le snapshot serveur réconcilie ensuite.
+  const prev=(_convData&&_convData.msgs)?_convData.msgs.slice():[];
+  _convData.msgs=((_convData&&_convData.msgs)||[]).concat([msg]);
+  _convData.lastAt=now;
+  _pendingMsgs.push(msg);
+  const sc0=document.getElementById('convSc'); if(sc0) sc0.innerHTML=convBubbles(_convData,_convSearch||'');
+  scrollConv();
+  // Ajout ATOMIQUE côté serveur (arrayUnion) : évite la perte de messages en cas
+  // d'envoi simultané par les deux interlocuteurs.
+  const fv=firebase.firestore.FieldValue;
+  _convRef.update({msgs:fv.arrayUnion(msg),lastAt:now,lastMsg:msg.text}).then(()=>{
+    const i=_pendingMsgs.indexOf(msg); if(i>=0)_pendingMsgs.splice(i,1);
     convMarkSeen(_activeCid,_convData);
-  }catch(e){ console.error('CHAT_OPEN_ERR', e && e.code, e && e.message); toast('❌ Envoi impossible'); if(inp&&txt)inp.value=txt; _chatImg=img; }
+  }).catch(e=>{ console.error('CHAT_SEND_ERR', e && e.code, e && e.message);
+    const i=_pendingMsgs.indexOf(msg); if(i>=0)_pendingMsgs.splice(i,1);
+    // Échec : on remet la zone d'envoi comme avant, le snapshot serveur rétablira l'état.
+    toast('❌ Envoi impossible — vérifie ta connexion');
+    _convData.msgs=prev;
+    const s2=document.getElementById('convSc'); if(s2) s2.innerHTML=convBubbles(_convData,_convSearch||'');
+    if(inp&&txt) inp.value=txt; _chatImg=img; });
 }
 /* ============== TRANSACTION SÉCURISÉE ============== */
 function startContact(id){let l=allListings.find(x=>x.id===id);if(!l)return;
