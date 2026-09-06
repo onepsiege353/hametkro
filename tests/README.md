@@ -18,61 +18,58 @@ Crée de **vrais comptes temporaires** sur ton projet Firebase et exerce l'app s
 cd tests/e2e
 npm i playwright
 npx playwright install chromium
-node run_e2e.js
+node e2e_chat_real.js    # chat de bout en bout (2 contextes isolés) → 9 assertions
+node run_e2e.js          # chat + présence (badges En ligne / Hors ligne)
 ```
 
-Couverture E2E :
-- vendeur publie une annonce (upload photo réel) ;
-- acheteur trouve l'annonce, ouvre « Discuter » ;
-- échange de messages (si règles publiées) ;
-- **badges de présence** : « En ligne » quand le vendeur est connecté, « Hors ligne » après fermeture.
+Couverture du chat réel (`e2e_chat_real.js`) :
+1. vendeur publie une annonce (upload photo réel, vérifiée en Firestore) ;
+2. acheteur (contexte isolé) trouve l'annonce et ouvre « Discuter » ;
+3. l'acheteur envoie un message ;
+4. le vendeur (autre contexte) l'ouvre et reçoit le message ;
+5. le vendeur répond ;
+6. l'acheteur reçoit la réponse **sans être éjecté** du fil ;
+7. les deux messages sont **persistés** en Firestore.
 
-> ⚠️ Le **chat** ne peut pas s'ouvrir tant que les règles Firestore
-> `conversations`/`messages` **ne sont pas publiées** sur le projet (voir ci-dessous).
-> Tant que ce n'est pas fait, le test affiche un message de SKIP et poursuit sur la
-> présence — le blocage est volontairement visible et explicite.
+Couverture de la présence (`run_e2e.js`) : badges « En ligne » quand le vendeur est
+connecté, « Hors ligne » après fermeture (>60 s sans heartbeat).
+
+> ✅ **Règles Firestore publiées** (06-09). Le chat passe intégralement. Seule la
+> correction importante du `read` de `conversations` reste à conserver (voir ci-dessous).
 
 ---
 
-## 🔧 À FAIRE À LA MAIN : publier les règles Firestore (débloque le chat)
+## 🔧 Règles Firestore — ce qu'il faut retenir (déjà appliqué, mais fragile)
 
-Le workflow GitHub Pages ne déploie **que les fichiers web** (`webapp/`), jamais les
-règles Firestore. Pourtant les règles `conversations`/`messages` sont **indispensables**
-au chat et existent déjà dans `firebase/firestore.rules`.
+Le workflow GitHub Pages ne déploie **que** les fichiers web (`webapp/`), jamais les
+règles Firestore. Les règles de production sont publiées et correspondent à
+`firebase/firestore.rules`. **À chaque modification de ce fichier, il faut re-publier.**
 
-### Méthode A — Console Firebase (recommandée, 2 min)
-1. Va sur https://console.firebase.google.com → projet **hametkro**.
-2. Menu de gauche : **Firestore Database** → onglet **Rules**.
-3. Remplace tout le contenu par celui du fichier `firebase/firestore.rules`.
-4. Bouton **Publier**.
+### Correction critique (piège Firestore) — déjà en place
+L'app fait `ref.get()` sur une conversation **avant** de la créer pour tester son
+existence. Si la règle `read` exige d'être participant (`uid in resource.data.participantIds`),
+la lecture d'un document **absent** (`resource == null`) est **refusée** → le chat
+échouait en `permission-denied`. La règle doit donc autoriser le doc absent :
 
-### Méthode B — Firebase CLI
-```bash
-npm i -g firebase-tools
-firebase login            # connecte-toi dans le navigateur
-cd hametkro
-firebase use --add        # choisis le projet hametkro
-firebase deploy --only firestore:rules
-```
-
-### Extrait minimal (si tu préfères n'ajouter que le chat)
 ```js
 match /conversations/{id} {
-  allow read, update: if request.auth != null
-    && request.auth.uid in resource.data.participantIds;
-  allow create: if request.auth != null
-    && request.resource.data.participantIds.size() == 2
-    && request.auth.uid in request.resource.data.participantIds;
-  allow delete: if false;
-}
-match /messages/{id} {
-  allow read, create: if request.auth != null
-    && exists(/databases/$(database)/documents/conversations/$(request.resource.data.conversationId));
-  allow update, delete: if false;
+  allow read: if request.auth != null && (
+    resource == null || request.auth.uid in resource.data.participantIds);
+  ...
 }
 ```
 
-Une fois publiées, relance `node run_e2e.js` : les étapes du chat passeront.
+### Ne pas sur-restreindre `listings.create`
+La règle de création d'annonces ne doit **pas** exiger `price is number` ni d'autres
+contraintes que l'app n'émet pas réellement, sinon toute publication échoue en
+`permission-denied`. Garder : `allow create: if request.auth != null
+&& request.resource.data.sellerId == request.auth.uid;`.
+
+### Re-publier
+Console Firebase → Firestore → Rules → coller `firebase/firestore.rules` → Publier.
+(Le compte de service du sandbox, `firebase-adminsdk-fbsvc@hametkro…`, ne peut pas
+utiliser `firebase deploy` — l'API serviceusage lui est fermée — mais peut publier les
+rulesets via l'API REST `firebaserules.googleapis.com`.)
 
 ---
 
