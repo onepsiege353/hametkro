@@ -1,5 +1,5 @@
 /* Hametkro PWA — service worker minimal (network-first). */
-const CACHE = 'hametkro-v2';
+const CACHE = 'hametkro-v3';
 const CORE = ['./', './index.html', './manifest.json', './icon-192.png', './icon-512.png', './apple-icon-180.png'];
 
 self.addEventListener('install', (e) => {
