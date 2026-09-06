@@ -1,0 +1,47 @@
+name: Deploy Hametkro Web (GitHub Pages)
+
+# Publie la PWA web sur GitHub Pages (adresse HTTPS stable et permanente).
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - 'webapp/**'
+      - '.github/workflows/deploy_pages.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Configurer Pages
+        uses: actions/configure-pages@v4
+
+      - name: Préparer le contenu du site
+        run: |
+          mkdir -p site
+          cp -r webapp/* site/
+          ls -la site
+
+      - name: Upload l'artefact Pages
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+
+      - name: Déployer sur GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
