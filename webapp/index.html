@@ -79,6 +79,39 @@ if ('serviceWorker' in navigator) {
   .warn{background:#fff5ea;border:1px solid #ffd9b8;color:#a3541b;border-radius:12px;padding:10px;font-size:12px;margin:8px 0}
   .box{background:#fff;border:1px solid var(--line);border-radius:14px;padding:13px;margin:8px 0}
   .load{display:flex;align-items:center;justify-content:center;min-height:60vh;flex-direction:column;gap:10px;color:var(--grey)}
+  /* ===== Hero (page d'accueil) ===== */
+  .hero{position:relative;background:linear-gradient(135deg,#FF7A00,#FF8f2e 55%,#009A44);color:#fff;padding:22px 16px 20px;border-radius:0 0 22px 22px;margin-bottom:2px;overflow:hidden}
+  .hero::after{content:"";position:absolute;right:-40px;top:-30px;width:180px;height:180px;border-radius:50%;background:rgba(255,255,255,.12)}
+  .hero::before{content:"";position:absolute;right:40px;bottom:-50px;width:120px;height:120px;border-radius:50%;background:rgba(255,255,255,.10)}
+  .hero h1{margin:0;font-size:24px;font-weight:900;line-height:1.1;position:relative}
+  .hero p{margin:8px 0 0;font-size:13px;opacity:.95;position:relative}
+  .hero .badges{display:flex;gap:8px;margin-top:14px;position:relative;flex-wrap:wrap}
+  .hero .badge-chip{background:rgba(255,255,255,.22);border:1px solid rgba(255,255,255,.4);padding:5px 11px;border-radius:30px;font-size:11px;font-weight:700}
+  .catSection{padding:4px 12px}
+  .catSection h3{font-size:15px;margin:12px 2px 8px}
+  .catRow{display:grid;grid-template-columns:repeat(auto-fill,minmax(90px,1fr));gap:8px}
+  .catCell{background:#fff;border:1px solid var(--line);border-radius:14px;padding:10px 4px;text-align:center;cursor:pointer;transition:.15s}
+  .catCell:hover{transform:translateY(-2px);border-color:var(--org)}
+  .catCell .e{font-size:26px}
+  .catCell span{font-size:11px;font-weight:700;display:block;margin-top:4px}
+  .sectionTitle{display:flex;align-items:center;justify-content:space-between;padding:14px 14px 4px}
+  .sectionTitle h3{margin:0;font-size:16px}
+  .sectionTitle a{font-size:12px}
+  /* galerie dans la fiche détail */
+  .gallery{position:relative;background:#111}
+  .gallery img{width:100%;max-height:300px;object-fit:contain;background:#111;display:block}
+  .gallery .navbtn{position:absolute;top:50%;transform:translateY(-50%);background:rgba(255,255,255,.9);border:none;border-radius:50%;width:34px;height:34px;font-size:18px;cursor:pointer;box-shadow:0 2px 6px rgba(0,0,0,.3)}
+  .gallery .gprev{left:8px}.gallery .gnext{right:8px}
+  .gallery .count{position:absolute;bottom:8px;right:8px;background:rgba(0,0,0,.6);color:#fff;font-size:11px;padding:3px 8px;border-radius:20px}
+  .dots{display:flex;gap:6px;justify-content:center;padding:8px 0}
+  .dots i{width:8px;height:8px;border-radius:50%;background:#ccc}
+  .dots i.on{background:var(--org)}
+  /* vignettes de photos à l'upload */
+  .thumbs{display:flex;gap:8px;flex-wrap:wrap;margin:6px 0}
+  .thumbWrap{position:relative;width:80px;height:80px;border-radius:12px;overflow:hidden;border:1px solid var(--line)}
+  .thumbWrap img{width:100%;height:100%;object-fit:cover}
+  .thumbWrap .rm{position:absolute;top:2px;right:2px;background:#e6453c;color:#fff;border:none;border-radius:50%;width:20px;height:20px;font-size:12px;cursor:pointer;line-height:20px}
+  .addPhoto{width:80px;height:80px;border:2px dashed var(--org);border-radius:12px;display:flex;align-items:center;justify-content:center;color:var(--org);background:#FFF7EF;cursor:pointer;flex-direction:column;font-size:11px}
   /* ===== RESPONSIVE : écrans moyens et grands (tablette / ordinateur) ===== */
   .nav{position:sticky;bottom:0;width:100%;max-width:460px;margin:0 auto}
   .grid .tile .img{height:160px}
@@ -185,19 +218,48 @@ function shell(){
 /* ============== HOME (lecture publique) ============== */
 function homeV(){
   let list=allListings.filter(l=>!l.sold&&(catF==='all'||l.cat===catF)&&(!q||(l.t||'').toLowerCase().includes(q)||(l.city||'').toLowerCase().includes(q)));
-  let chips=`<div class="chips"><div class="chip ${catF==='all'?'on':''}" onclick="catF='all';shell()">Tout</div>`+CATS.map(c=>`<div class="chip ${catF===c.id?'on':''}" onclick="catF='${c.id}';shell()">${c.e} ${c.n}</div>`).join('')+`</div>`;
-  let cards=list.length?`<div class="grid">${list.map(tile).join('')}</div>`:`<div class="center cardp muted">Aucun article pour l'instant.</div>`;
-  return `<div class="search"><span class="ic">🔍</span><input class="input" id="q" placeholder="Rechercher (téléphone, robe, voiture…)" value="${esc(q)}" oninput="q=this.value;shell()"></div>${chips}${cards}`;
+  let firstName = curProfile ? (curProfile.name||'Compte').split(' ')[0] : '';
+  let hero = `<div class="hero">
+    <h1>${curProfile?('Bonjour '+esc(firstName)+' 👋'):'Achète & vends près de chez toi'}</h1>
+    <p>${curProfile?'Découvre les bonnes affaires du marché ivoirien 🇨🇮':'Le marché de la seconde main en Côte d\'Ivoire 🇨🇮 · 100% sécurisé'}</p>
+    <div class="badges"><span class="badge-chip">🔒 Achat sécurisé</span><span class="badge-chip">✅ Validation mutuelle</span><span class="badge-chip">💚 Éco-responsable</span></div>
+  </div>`;
+  let catSection = `<div class="catSection"><h3>Parcourir par catégorie</h3>
+    <div class="catRow">${CATS.map(c=>`<div class="catCell" onclick="setCat('${c.id}')"><div class="e">${c.e}</div><span>${c.n}</span></div>`).join('')}</div></div>`;
+  let searchChips = `<div class="search"><span class="ic">🔍</span><input class="input" id="q" placeholder="Rechercher un article…" value="${esc(q)}" oninput="q=this.value;shell()"></div>
+    <div class="chips"><div class="chip ${catF==='all'?'on':''}" onclick="setCat('all')">Tout</div>${CATS.map(c=>`<div class="chip ${catF===c.id?'on':''}" onclick="setCat('${c.id}')">${c.e} ${c.n}</div>`).join('')}</div>`;
+  let title = catF!=='all' ? `<div class="sectionTitle"><h3>${catOf(catF).e} ${catOf(catF).n}</h3><a onclick="setCat('all')">Tout voir</a></div>` : `<div class="sectionTitle"><h3>Annonces récentes</h3></div>`;
+  let cards=list.length?`<div class="grid">${list.map(tile).join('')}</div>`:`<div class="center cardp muted">Aucun article pour le moment.</div>`;
+  return hero+catSection+searchChips+title+cards;
 }
-function tile(l){return `<div class="card tile" onclick="detail('${l.id}')">
-  <div class="img">${l.img?`<img src="${esc(l.img)}" style="width:100%;height:100%;object-fit:cover">`:`<span class="e">${catOf(l.cat).e}</span>`}
+function setCat(id){catF=id;shell();}
+function firstImg(l){return (l.photos&&l.photos.length)?l.photos[0]:(l.img||'');}
+function tile(l){let im=firstImg(l);
+  return `<div class="card tile" onclick="detail('${l.id}')">
+  <div class="img">${im?`<img src="${esc(im)}" style="width:100%;height:100%;object-fit:cover">`:`<span class="e">${catOf(l.cat).e}</span>`}
+    ${(l.photos&&l.photos.length>1)?`<span style="position:absolute;right:8px;top:8px;background:rgba(0,0,0,.5);color:#fff;font-size:9px;padding:2px 6px;border-radius:6px">🖼 ${l.photos.length}</span>`:''}
     <span class="new">${(Date.now()-(l.time||0))<3*864e5?'NOUVEAU':''}</span></div>
   <div class="bd"><h4>${esc(l.t)}</h4><div class="pr">${fmt(l.p)} FCFA</div>
     <div class="me"><span>📍 ${esc(l.city||'')}</span><span>${timeago(l.time)}</span></div></div></div>`;}
 
+let galIndex={}; // état du carrousel par annonce
+function galleryHtml(l,id){
+  const photos=(l.photos&&l.photos.length)?l.photos:(l.img?[l.img]:[]);
+  const cur=galIndex[id]||0;
+  if(photos.length===0) return `<div style="height:200px;display:flex;align-items:center;justify-content:center;font-size:96px;background:linear-gradient(135deg,#FCE8D6,#E5F4EA)">${catOf(l.cat).e}</div>`;
+  if(photos.length===1) return `<div class="gallery"><img src="${esc(photos[0])}"></div>`;
+  let dots=photos.map((_,i)=>`<i class="${i===cur?'on':''}"></i>`).join('');
+  return `<div class="gallery">
+    <img src="${esc(photos[cur])}">
+    ${cur>0?`<button class="navbtn gprev" onclick="galleryGo('${id}',-1)">‹</button>`:''}
+    ${cur<photos.length-1?`<button class="navbtn gnext" onclick="galleryGo('${id}',1)">›</button>`:''}
+    <span class="count">${cur+1}/${photos.length}</span>
+  </div><div class="dots">${dots}</div>`;
+}
+function galleryGo(id,dir){galIndex[id]=((galIndex[id]||0)+dir+100)%100;detail(id);}
 function detail(id){let l=allListings.find(x=>x.id===id);if(!l)return;
  let mine=curProfile&&l.sellerId===curProfile.uid;
- let img=l.img?`<img src="${esc(l.img)}" style="width:100%;max-height:240px;object-fit:cover">`:`<div style="height:200px;display:flex;align-items:center;justify-content:center;font-size:96px;background:linear-gradient(135deg,#FCE8D6,#E5F4EA)">${catOf(l.cat).e}</div>`;
+ let img=galleryHtml(l,id);
  openModal(`<div style="position:sticky;top:0;background:#fff;padding:10px 14px;display:flex;justify-content:space-between;border-bottom:1px solid var(--line)"><span>${catOf(l.cat).e} ${catOf(l.cat).n}</span><span style="cursor:pointer;font-size:20px" onclick="closeAll()">✕</span></div>
   ${img}<div class="cardp">
   <h2 style="margin:0">${esc(l.t)}</h2>
@@ -254,22 +316,33 @@ function sellSheet(){if(!curProfile)return openAuth();
  openSheet(`<div style="padding:12px 0 4px"><div class="row" style="justify-content:space-between"><h2 style="margin:0">Publier</h2><span style="cursor:pointer;font-size:20px" onclick="closeAll()">✕</span></div></div>
   <label>Catégorie</label><div class="row" style="gap:6px;flex-wrap:wrap">${CATS.map(c=>`<span class="catpill ${c.id==='fashion'?'on':''}" data-cat="${c.id}" onclick="pickCat(this)">${c.e} ${c.n}</span>`).join('')}</div>
   <input type="hidden" id="${pid}_cat" value="fashion">
-  <label>Photo</label><div id="${pid}_ph" onclick="document.getElementById('${pid}_file').click()" style="height:96px;border:2px dashed var(--org);border-radius:14px;display:flex;align-items:center;justify-content:center;color:var(--org);background:#FFF7EF;cursor:pointer;flex-direction:column;font-size:13px">📷<br>Ajouter</div><input type="file" id="${pid}_file" accept="image/*" style="display:none" onchange="readImg('${pid}',this)">
+  <label>Photos (jusqu'à 5)</label><div class="thumbs" id="${pid}_th"><div class="addPhoto" onclick="document.getElementById('${pid}_file').click()">📷<br>Ajouter</div></div>
+  <input type="file" id="${pid}_file" accept="image/*" multiple style="display:none" onchange="addPhotos('${pid}',this)">
+  <input type="hidden" id="${pid}_photos">
   <label>Titre *</label><input id="${pid}_t" class="input" placeholder="Ex : Robe wax taille M…">
   <div class="row" style="align-items:flex-start"><div class="grow"><label>Prix (FCFA) *</label><input id="${pid}_p" class="input" type="number"></div><div style="width:112px"><label>Ville</label><input id="${pid}_c" class="input" value="${esc(curProfile.city||'Abidjan')}"></div></div>
   <label>État</label><div class="row" style="gap:6px;flex-wrap:wrap">${CONDS.map(c=>`<span class="catpill" data-c="${c}" onclick="pickCond(this)">${c}</span>`).join('')}</div><input type="hidden" id="${pid}_cond" value="Bon état">
   <label>Description</label><textarea id="${pid}_d" class="input" rows="3"></textarea>
   <button class="btn g" onclick="publish('${pid}')">Publier 🎉</button>`);
  curSheetId=pid;}
-let curSheetId=null, pendingImg=null;
+let curSheetId=null, pendingPhotos=[]; // {pid: [dataUrl...]}
 function pickCat(el){el.closest('.row').querySelectorAll('.catpill').forEach(x=>x.classList.remove('on'));el.classList.add('on');document.getElementById(curSheetId+'_cat').value=el.dataset.cat}
 function pickCond(el){el.closest('.row').querySelectorAll('.catpill').forEach(x=>x.classList.remove('on'));el.classList.add('on');document.getElementById(curSheetId+'_cond').value=el.dataset.c}
-function readImg(pid,input){let f=input.files[0];if(!f)return;let r=new FileReader();r.onload=()=>{let img=new Image();img.onload=()=>{let m=Math.min(1,600/Math.max(img.width,img.height)),cv=document.createElement('canvas');cv.width=img.width*m;cv.height=img.height*m;cv.getContext('2d').drawImage(img,0,0,cv.width,cv.height);pendingImg=cv.toDataURL('image/jpeg',.75);document.getElementById(pid+'_ph').innerHTML='<img src="'+pendingImg+'" style="width:100%;height:96px;object-fit:cover;border-radius:14px">'};img.src=r.result};r.readAsDataURL(f)}
+// Compression d'une image fichier → dataURL (petit, pour rester sous la limite Firestore)
+function compressFile(file,maxSize){return new Promise((res)=>{let r=new FileReader();r.onload=()=>{let img=new Image();img.onload=()=>{let m=Math.min(1,maxSize/Math.max(img.width,img.height));let cv=document.createElement('canvas');cv.width=Math.max(1,Math.round(img.width*m));cv.height=Math.max(1,Math.round(img.height*m));cv.getContext('2d').drawImage(img,0,0,cv.width,cv.height);res(cv.toDataURL('image/jpeg',.68));};img.src=r.result};r.readAsDataURL(file);});}
+function addPhotos(pid,input){pendingPhotos[pid]=pendingPhotos[pid]||[];let files=[...input.files];input.value='';
+ let run=async()=>{for(const f of files){if(pendingPhotos[pid].length>=5)break;let d=await compressFile(f,600);pendingPhotos[pid].push(d);}renderThumbs(pid);};
+ run();}
+function renderThumbs(pid){let arr=pendingPhotos[pid]||[];let box=document.getElementById(pid+'_th');if(!box)return;
+ box.innerHTML=arr.map((d,i)=>`<div class="thumbWrap"><img src="${esc(d)}"><button class="rm" onclick="rmPhoto('${pid}',${i})">✕</button></div>`).join('')
+   +(arr.length<5?`<div class="addPhoto" onclick="document.getElementById('${pid}_file').click()">📷<br>Ajouter</div>`:'');}
+function rmPhoto(pid,i){pendingPhotos[pid].splice(i,1);renderThumbs(pid);}
 async function publish(pid){let t=val(pid+'_t').trim(),p=parseFloat(val(pid+'_p')),city=val(pid+'_c')||'Abidjan',d=val(pid+'_d');if(t.length<3)return toast('Titre requis');if(!p||p>0===false||!p)return toast('Prix invalide');
- try{let imgUrl=pendingImg||''; // photo stockée en base (Firestore), pas de Storage requis
+ let photos=pendingPhotos[pid]||[];if(photos.length===0)return toast('Ajoute au moins une photo');
+ try{
  let doc=db.collection('listings').doc();let now=Date.now();
- await doc.set({id:doc.id,cat:document.getElementById(pid+'_cat').value,t,p,city,cond:document.getElementById(pid+'_cond').value,size:'',d,img:imgUrl,sellerId:curProfile.uid,sellerName:curProfile.name,sold:false,time:now,createdAt:now,views:0});
- closeAll();toast('🎉 Publié !');view='sell';shell();}catch(e){toast('❌ Erreur: '+e.message)}}
+ await doc.set({id:doc.id,cat:document.getElementById(pid+'_cat').value,t,p,city,cond:document.getElementById(pid+'_cond').value,size:'',d,photos,sellerId:curProfile.uid,sellerName:curProfile.name,sold:false,time:now,createdAt:now,views:0});
+ closeAll();delete pendingPhotos[pid];toast('🎉 Publié !');view='sell';shell();}catch(e){toast('❌ Erreur: '+e.message)}}
 
 /* ============== TRANSACTION SÉCURISÉE ============== */
 function startContact(id){let l=allListings.find(x=>x.id===id);if(!l)return;
