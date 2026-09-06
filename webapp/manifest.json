@@ -1,0 +1,19 @@
+{
+  "name": "Hametkro 🇨🇮 — Marché de seconde main",
+  "short_name": "Hametkro",
+  "description": "Achète et vends en seconde main en Côte d'Ivoire. Articles vérifiés, transactions sécurisées, commission transparente.",
+  "id": "/",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#FF7A00",
+  "theme_color": "#009A44",
+  "lang": "fr",
+  "categories": ["shopping", "lifestyle"],
+  "icons": [
+    { "src": "icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}

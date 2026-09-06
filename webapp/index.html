@@ -4,11 +4,28 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Hametkro 🇨🇮 — Seconde main</title>
+<meta name="description" content="Marché de seconde main ivoirien : achète et vends en toute sécurité. Transactions validées, navigation libre.">
+<meta name="theme-color" content="#009A44">
+<link rel="manifest" href="manifest.json">
+<link rel="icon" href="icon-192.png">
+<!-- iOS PWA -->
+<link rel="apple-touch-icon" href="apple-icon-180.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="Hametkro">
 <!-- Firebase SDK (compat) -->
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
 <script src="firebase-config.js"></script>
+<script>
+// Enregistre le service worker (PWA) — seulement en HTTPS.
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('sw.js').catch(()=>{});
+  });
+}
+</script>
 <style>
   :root{--org:#FF7A00;--org-d:#E06A00;--grn:#009A44;--grn-d:#007A36;--ink:#17150F;--grey:#6E6A5E;--line:#E9E6DD;--bg:#F7F6F1;--white:#fff;--sang:#E6453C}
   *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
@@ -115,7 +132,12 @@ function shell(){
   let items=[['home','🏠','Accueil'],['sell','🗂️','Vendre'],['me','👤','Compte']]
     .map(([k,i,l])=>`<button class="${view===k?'on':''}" onclick="view='${k}';shell()"><span class="i">${i}</span>${l}</button>`).join('');
   if(isAdmin()) items+=`<button class="${view==='admin'?'on':''}" onclick="view='admin';shell()"><span class="i">📊</span>Admin</button>`;
-  renderApp(`<div class="topbar">${top}</div>${body}<div class="nav">${items}</div>`);
+  let installBar = deferredPrompt ? `<div style="position:fixed;left:50%;transform:translateX(-50%);bottom:64px;width:100%;max-width:460px;z-index:45;padding:6px 12px">
+    <div style="background:var(--org);color:#fff;border-radius:14px;padding:10px 12px;display:flex;align-items:center;gap:8px;box-shadow:0 4px 14px rgba(0,0,0,.18)">
+      <span style="font-size:20px">📲</span><div class="grow" style="font-size:12.5px;font-weight:700">Installe Hametkro sur ton téléphone</div>
+      <span style="background:#fff;color:var(--org);padding:6px 12px;border-radius:9px;font-weight:800;cursor:pointer" onclick="installPWA()">Installer</span>
+    </div></div>` : '';
+  renderApp(`<div class="topbar">${top}</div>${body}<div class="nav">${items}</div>${installBar}`);
   document.documentElement.scrollTop=0;
 }
 
@@ -262,6 +284,11 @@ let txCache=[];
 function listenListings(){db.collection('listings').orderBy('time','desc').onSnapshot(snap=>{allListings=snap.docs.map(d=>d.data());boot();},err=>{renderApp(`<div class="load"><div style="font-size:46px">⚠️</div><div>Impossible de lire les annonces.<br><span class="muted">Vérifie que Firestore est activé et les règles publiées.</span></div><div>${esc(err&&err.message||'')}</div></div>`);});}
 function listenTx(){auth.onAuthStateChanged(u=>{ if(!u){txCache=[];return;}
   db.collection('transactions').where('participants','array-contains',u.uid).onSnapshot(snap=>{txCache=snap.docs.map(d=>d.data());if(view==='sell'||view==='admin')boot();}); });}
+
+/* ============== INSTALLATION PWA ============== */
+let deferredPrompt=null;
+window.addEventListener('beforeinstallprompt',(e)=>{e.preventDefault();deferredPrompt=e;});
+async function installPWA(){ if(!deferredPrompt)return; deferredPrompt.prompt(); const c=await deferredPrompt.userChoice; deferredPrompt=null; toast('Merci ! Hametkro est installé 📲'); }
 
 /* ============== DÉMARRAGE ============== */
 try{ fb(); listenListings(); listenTx(); }catch(e){ renderApp(`<div class="load"><div style="font-size:46px">⚠️</div><div>Erreur d'initialisation Firebase.</div><div class="muted">Ouvre cette page via le serveur (http), pas en fichier local, et vérifie firebase-config.js.</div></div>`);}
