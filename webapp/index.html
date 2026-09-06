@@ -540,6 +540,7 @@ function messagesV(){ if(!curProfile) return `<div class="hdr"><h2>Messages</h2>
 async function openChatFromListing(id){ if(!curProfile) return openAuth();
   const l=allListings.find(x=>x.id===id); if(!l) return;
   if(l.sellerId===curProfile.uid) return toast('C\'est ton propre article');
+  closeAll(); // ferme la fiche annonce (modal) avant le chat plein ecran
   const other=l.sellerId, otherNm=l.sellerName||'Vendeur';
   const cid=convIdKey(curProfile.uid,other,id);
   const ref=db.collection('conversations').doc(cid);
