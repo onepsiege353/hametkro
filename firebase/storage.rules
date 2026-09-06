@@ -1,0 +1,17 @@
+rules_version = '2';
+service firebase.storage {
+  match /b/{bucket}/o {
+    match /{allPaths=**} {
+      allow read: if true; // les photos des annonces sont publiques
+    }
+
+    // Upload d'images par un utilisateur authentifié uniquement
+    // Chemin attendu : listings/{uid}/{fichier}  ou  avatars/{uid}/{fichier}
+    match /{folder}/{uid}/{fileName} {
+      allow write: if request.auth != null
+        && request.auth.uid == uid
+        && request.resource.size < 10 * 1024 * 1024   // max 10 Mo
+        && request.resource.contentType.matches('image/.*');
+    }
+  }
+}

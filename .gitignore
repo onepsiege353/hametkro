@@ -1,0 +1,27 @@
+# Flutter/Dart
+.dart_tool/
+.packages
+build/
+.flutter-plugins*
+pubspec.lock
+**/generated_plugin_registrant.*
+
+# Android
+android/.gradle/
+android/local.properties
+android/key.properties
+**/*.jks
+**/*.keystore
+
+# iOS
+ios/Pods/
+ios/.symlinks/
+
+# Firebase secrets (config par plateforme téléchargée depuis la console)
+android/app/google-services.json
+ios/Runner/GoogleService-Info.plist
+.env
+
+# divers
+*.log
+.DS_Store
