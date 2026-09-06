@@ -34,6 +34,10 @@ Couverture du chat réel (`e2e_chat_real.js`) :
 Couverture de la présence (`run_e2e.js`) : badges « En ligne » quand le vendeur est
 connecté, « Hors ligne » après fermeture (>60 s sans heartbeat).
 
+Tests du module **Repas du jour** : `node tests/food_logic.test.js` → 12 assertions
+(parse du menu, conversion heures, fenêtre de commande `menuOpen`, format monnaie).
+Un E2E du flux cantinière → commande → confirmation existe (`e2e/e2e_food.js`).
+
 > ✅ **Règles Firestore publiées** (06-09). Le chat passe intégralement. Seule la
 > correction importante du `read` de `conversations` reste à conserver (voir ci-dessous).
 
@@ -79,3 +83,28 @@ rulesets via l'API REST `firebaserules.googleapis.com`.)
 3. **Perte de message en concurrence** : envoi non atomique → `FieldValue.arrayUnion`.
 4. **Modal cachant le chat** : depuis une annonce, « Discuter » ouvrait le chat *sous* le modal → `closeAll()` avant d'ouvrir.
 5. **Présence** : heartbeat 20 s sur le profil `users/{uid}` (aucune règle supplémentaire requise).
+
+---
+
+## 🍽️ Module « Repas du jour » (prototype)
+
+Nouvel onglet **« Repas »** : des cantinières publient chaque matin leur **menu du
+jour**, leur **zone de livraison** (entreprises, quartiers) et leur **créneau**
+(commande avant X h, livraison à la pause). Les clients commandent avant l'heure
+limite et **paient à la livraison**.
+
+**Données (Firestore)** :
+- `users/{uid}.food` — profil cantinière persistant (enseigne, zone, créneau) ;
+- `foodmenus/{sellerId_AAAA-MM-JJ}` — menu du jour (lecture publique) ;
+- `foodorders/{id}` — commandes (réservées à l'acheteur et à la cantinière).
+
+**Règles** déjà publiées dans `firebase/firestore.rules` (`match /foodmenus`,
+`match /foodorders`). **Remarque règles** : ne pas restreindre davantage
+`listings.create` ni exiger des champs que l'app n'écrit pas (risque de casser la
+publication d'annonces — voir ci-dessus).
+
+**Améliorations futures proposées** (pas implémentées dans le prototype) :
+- regroupement des commandes d'une même entreprise à un point de dépôt ;
+- planification multi-jours / commandes récurrentes ;
+- temps réel des quantités restantes par plat et compteur « dernière commande avant X » ;
+- paiement Mobile Money sécurisé en option, et avis sur les cantinières.

@@ -306,7 +306,7 @@ function shell(){
   // Si un fil de discussion est affiché en plein écran, on ne ré-affiche pas
   // le shell à cause d'un snapshot en arrière-plan (bug de sortie du chat).
   if(chatIsOpen()) return;
-  let body = view==='home'?homeV(): view==='sell'?sellV(): view==='msg'?messagesV(): view==='me'?profileV(): view==='admin'?adminV(): homeV();
+  let body = view==='home'?homeV(): view==='sell'?sellV(): view==='msg'?messagesV(): view==='me'?profileV(): view==='admin'?adminV(): view==='resto'?restoV(): homeV();
   let top = curProfile? `<div class="logo grow"><b>hamet</b><i>kro</i><small>${esc(curProfile.country||"Côte d'Ivoire")} ${(curProfile.countryCode==='CI'||!curProfile.countryCode)?'🇨🇮':'🌍'} · ${esc(curProfile.city||'')}</small></div>
       <div style="display:flex;align-items:center;gap:10px">
         <div style="text-align:right;font-size:11px;color:var(--grey)">${esc((curProfile.name||'Compte').split(' ')[0])} ${isAdmin()?'<span class="badge">ADMIN</span>':''}</div>
@@ -316,7 +316,7 @@ function shell(){
     : `<div class="logo grow"><b>hamet</b><i>kro</i><small>Côte d'Ivoire 🇨🇮 · navigation libre</small></div>
       <button class="btn g sm" onclick="openAuth()">Se connecter</button>`;
   let msgBadge = curProfile&&msgUnread>0?`<span style="position:absolute;top:-2px;right:calc(50% - 20px);background:var(--sang);color:#fff;font-size:9px;font-weight:800;border-radius:50%;min-width:16px;height:16px;display:flex;align-items:center;justify-content:center;padding:0 3px">${msgUnread>99?'99+':msgUnread}</span>`:'';
-  let items=[['home','🏠','Accueil'],['sell','🗂️','Vendre']];
+  let items=[['home','🏠','Accueil'],['resto','🍽️','Repas'],['sell','🗂️','Vendre']];
   if(curProfile) items.push(['msg','💬','Messages']);
   items.push(['me','👤','Compte']);
   items=items.map(([k,i,l])=>`<button class="${view===k?'on':''}" onclick="view='${k}';shell()"><span class="i" style="position:relative">${i}${k==='msg'?msgBadge:''}</span>${l}</button>`).join('');
@@ -695,13 +695,168 @@ function listenTx(){auth.onAuthStateChanged(u=>{ if(!u){txCache=[];notifsCache=[
 // Reconstruit aussi les notifs au chargement initial d'un utilisateur connecté.
 function afterAuthRebuild(u){ if(u) setTimeout(()=>buildNotifs(u.uid),400); }
 
+/* ============== REPAS DU JOUR · cantinières ==============
+ * Nouveau mode « menu du jour » : des vendeuses (cantinières) publient chaque
+ * jour le menu et la zone/créneau de livraison près des entreprises ; les
+ * clients commandent avant l'heure limite et paient à la livraison.
+ * DONNÉES :
+ *  - users/{uid}.food             : profil cantinière persistant
+ *  - foodmenus/{sellerId_DATE}    : menu du jour (lecture publique)
+ *  - foodorders/{id}              : commande (réservée aux 2 parties)
+ */
+let foodToday = [], incOrders = [], myOrders = [];
+const FOOD_CUTS = ['08:30','09:00','09:30','10:00','10:30','11:00','11:30'];
+const FOOD_WINS = ['11:30','12:00','12:30','13:00','13:30','14:00','14:30','15:00'];
+function pad2(n){ return (n<10?'0':'')+n; }
+function todayISO(){ const d=new Date(); return d.getFullYear()+'-'+pad2(d.getMonth()+1)+'-'+pad2(d.getDate()); }
+function hmMin(h){ const p=String(h==null?'':h).split(':'); return p.length===2? ((+p[0])*60+(+p[1])) : 0; }
+function nowMin(){ const d=new Date(); return d.getHours()*60+d.getMinutes(); }
+function minHm(m){ if(m==null||isNaN(m)) return '—'; return pad2(Math.floor(m/60))+':'+pad2(((m%60)+60)%60); }
+function fmtFCFA(n){ return Math.round(n||0).toString().replace(/\B(?=(\d{3})+(?!\d))/g,' '); }
+function menuOpen(m){ return !!(m && m.date===todayISO() && (m.cutoff||0) > nowMin()); }
+function shopOf(){ return (curProfile && curProfile.food) ? curProfile.food : null; }
+// Lecture temps réel : menus du jour (public) + commandes (selon compte).
+function listenFood(){
+  db.collection('foodmenus').where('date','==',todayISO()).onSnapshot(snap=>{
+    foodToday=snap.docs.map(d=>{const x=d.data();x.id=d.id;return x;}).sort((a,b)=>(b.time||0)-(a.time||0));
+    if(!chatIsOpen() && (view==='resto'||view==='home')) shell();
+  }, err=>{ console.error('FOOD_ERR', err && err.code, err && err.message); });
+  auth.onAuthStateChanged(u=>{
+    if(!u){ incOrders=[]; myOrders=[]; return; }
+    db.collection('foodorders').where('sellerId','==',u.uid).onSnapshot(s=>{
+      incOrders=s.docs.map(d=>{const x=d.data();x.id=d.id;return x;});
+      if(!chatIsOpen() && view==='resto') shell();
+    });
+    db.collection('foodorders').where('buyerId','==',u.uid).onSnapshot(s=>{
+      myOrders=s.docs.map(d=>{const x=d.data();x.id=d.id;return x;});
+      if(!chatIsOpen() && view==='resto') shell();
+    });
+  });
+}
+function parseItems(txt){ const out=[]; (txt||'').split('\n').forEach(line=>{
+    const parts=line.split('|'); if(parts.length<2) return;
+    const name=parts[0].trim(); const price=parseInt((parts[1]||'').replace(/[^\d]/g,''),10);
+    if(name && price>0) out.push({name,price});
+  }); return out; }
+// --- Formulaire cantinière (créer / modifier) ---
+function foodEdit(){ if(!curProfile)return openAuth(); const sh=shopOf()||{};
+  const today=foodToday.find(f=>f.sellerId===curProfile.uid);
+  const itemsTxt = today ? (today.items||[]).map(it=>it.name+' | '+it.price).join('\n') : '';
+  openSheet(`<div class="row" style="justify-content:space-between;padding:12px 0"><h2 style="margin:0">🍲 Ma cantinière</h2><span style="cursor:pointer;font-size:20px" onclick="closeAll()">✕</span></div>
+   <label>Nom / enseigne</label><input id="ff_name" class="input" value="${esc((sh.name)||curProfile.name||'')}" placeholder="Ex : Plats de Maman Adja">
+   <label>Zone de livraison (entreprises, quartiers…)</label><input id="ff_zone" class="input" value="${esc(sh.zone||'')}" placeholder="Ex : Plateau / Cocody, entreprises autour de…">
+   <label>Commandes avant</label><select id="ff_cut" class="input">${FOOD_CUTS.map(x=>`<option ${x===minHm(sh.cutoff)}?'selected':''}>${x}</option>`).join('')}</select>
+   <div class="row"><div class="grow"><label>Livraison de</label><select id="ff_ws" class="input">${FOOD_WINS.map(x=>`<option ${x===minHm(sh.winS||'12:00')?'selected':''}>${x}</option>`).join('')}</select></div>
+   <div class="grow"><label>à</label><select id="ff_we" class="input">${FOOD_WINS.map(x=>`<option ${x===minHm(sh.winE||'14:00')?'selected':''}>${x}</option>`).join('')}</select></div></div>
+   <label>Menu du jour (une ligne par plat : <b>Nom | prix</b>)</label>
+   <textarea id="ff_items" class="input" rows="5" placeholder="Riz gras | 1500&#10;Attiéké poisson | 2000&#10;Poulet braisé alloco | 2500">${esc(itemsTxt)}</textarea>
+   <div class="info">💰 Paiement à la livraison. Publie ton menu : les commandes passées avant l'heure limite arrivent dans ton espace.</div>
+   <button class="btn g" onclick="foodSave()">✅ Publier / mettre à jour le menu</button>`);
+}
+async function foodSave(){ const n=(val('ff_name')||'').trim(), z=(val('ff_zone')||'').trim();
+  if(n.length<2) return toast('Nom requis'); if(z.length<2) return toast('Zone requise');
+  const cut=hmMin(val('ff_cut')), ws=hmMin(val('ff_ws')), we=hmMin(val('ff_we'));
+  const items=parseItems(val('ff_items'));
+  if(!items.length) return toast('Ajoute au moins un plat (Nom | prix)');
+  try{
+    await db.collection('users').doc(curProfile.uid).set({food:{name:n,zone:z,cutoff:cut,winS:ws,winE:we}},{merge:true});
+    const date=todayISO(); const did=curProfile.uid+'_'+date;
+    await db.collection('foodmenus').doc(did).set({id:did,sellerId:curProfile.uid,sellerName:n,zone:z,
+      date,cutoff:cut,winS:ws,winE:we,items,time:Date.now()});
+    await refreshMe(); // recharge le profil (food) pour afficher le panneau cantinière
+    closeAll(); toast('🎉 Menu du jour publié !'); shell();
+  }catch(e){ console.error('FOOD_SAVE', e&&e.code, e&&e.message); toast('❌ '+(e&&e.message||'enregistrement impossible')); }
+}
+// --- Cartes menu / commande ---
+function foodMenuCard(m){
+  const open=menuOpen(m); const mine=curProfile&&m.sellerId===curProfile.uid;
+  const btn = mine ? `<span class="muted">C'est ta cantinière</span>`
+    : open ? `<button class="btn g sm" onclick="curProfile?orderSheet('${m.id}'):openAuth()">🛒 Commander</button>`
+    : `<span class="muted">🔴 Commandes closes pour aujourd'hui</span>`;
+  return `<div class="box" style="border-left:4px solid var(--org)">
+    <div class="row"><b class="grow">${esc(m.sellerName)}</b><span class="chip on" style="font-size:9px;cursor:default">${open?'🟢 commandes ouvertes':'🔴 fermé'}</span></div>
+    <div class="muted">📦 ${esc(m.zone||'')} · 🛵 ${minHm(m.winS)}–${minHm(m.winE)} · commande avant ${minHm(m.cutoff)}</div>
+    ${(m.items||[]).map(it=>`<div class="row" style="justify-content:space-between;padding:3px 0"><span>• ${esc(it.name)}</span><b>${fmtFCFA(it.price)} FCFA</b></div>`).join('')}
+    <div style="margin-top:8px">${btn}</div></div>`;
+}
+function orderSheet(menuId){ if(!curProfile)return openAuth(); const m=foodToday.find(x=>x.id===menuId); if(!m)return;
+  if(!menuOpen(m)) return toast('Commandes closes pour aujourd\'hui');
+  openSheet(`<div class="row" style="justify-content:space-between;padding:12px 0"><b>Commander chez ${esc(m.sellerName)}</b><span style="cursor:pointer;font-size:20px" onclick="closeAll()">✕</span></div>
+   <div class="muted">📦 ${esc(m.zone||'')} · 🛵 ${minHm(m.winS)}–${minHm(m.winE)} · paiement à la livraison</div>
+   ${(m.items||[]).map((it,i)=>`<div class="row" style="justify-content:space-between;padding:7px 0;border-bottom:1px solid var(--line)">
+      <div><div>${esc(it.name)}</div><div class="muted">${fmtFCFA(it.price)} FCFA</div></div>
+      <div style="display:flex;align-items:center;gap:7px"><button class="btn ghost sm" onclick="oq('${menuId}',${i},-1)">−</button><b id="oq_${i}" style="min-width:18px;text-align:center">0</b><button class="btn ghost sm" onclick="oq('${menuId}',${i},1)">+</button></div></div>`).join('')}
+   <label>Point de livraison / entreprise (optionnel)</label><input id="ff_place" class="input" placeholder="Ex : Hall d'entrée, Immeuble N°2">
+   <label>Note pour la cantinière</label><input id="ff_note" class="input" placeholder="Ex : sans piment">
+   <button class="btn g" onclick="orderSave('${m.id}')">Confirmer la commande (paiement à la livraison)</button>`);
+  window._ordQty=(m.items||[]).map(()=>0); }
+function oq(menuId,i,d){ window._ordQty=window._ordQty||[]; window._ordQty[i]=Math.max(0,(window._ordQty[i]||0)+d);
+  const el=document.getElementById('oq_'+i); if(el) el.textContent=window._ordQty[i]; }
+async function orderSave(menuId){ const m=foodToday.find(x=>x.id===menuId); if(!m)return;
+  const q=window._ordQty||[]; const chosen=m.items.map((it,i)=>({name:it.name,price:it.price,qty:q[i]||0})).filter(x=>x.qty>0);
+  if(!chosen.length) return toast('Choisis au moins un plat');
+  const total=chosen.reduce((a,x)=>a+x.price*x.qty,0);
+  try{
+    const doc=db.collection('foodorders').doc(); const now=Date.now();
+    await doc.set({id:doc.id,menuId,date:m.date,sellerId:m.sellerId,sellerName:m.sellerName,
+      buyerId:curProfile.uid,buyerName:curProfile.name,items:chosen,total,place:val('ff_place'),
+      note:val('ff_note'),status:'placed',winS:m.winS,winE:m.winE,time:now,updatedAt:now});
+    window._ordQty=null; closeAll(); toast('✅ Commande envoyée — paie à la livraison'); view='resto'; shell();
+  }catch(e){ console.error('FOOD_ORDER', e&&e.code, e&&e.message); toast('❌ '+(e&&e.message||'envoi impossible')); }
+}
+function orderCard(o){ const mine=curProfile&&o.sellerId===curProfile.uid;
+  const roleTxt = mine ? (esc(o.buyerName)+' a commandé') : ('Commande chez '+esc(o.sellerName));
+  const stMap={'placed':'🟡 À confirmer','confirmed':'🟢 Confirmée · livraison '+minHm(o.winS)+'–'+minHm(o.winE),'done':'✅ Livrée','cancel':'✖️ Annulée'};
+  let act='';
+  if(mine){
+    if(o.status==='placed') act=`<div class="row"><button class="btn g sm" onclick="orderAct('${o.id}','confirmed')">Confirmer</button><button class="btn ghost sm" onclick="orderAct('${o.id}','cancel')">Refuser</button></div>`;
+    else if(o.status==='confirmed') act=`<button class="btn g sm" onclick="orderAct('${o.id}','done')">Marquer livrée ✅</button>`;
+  } else if(!mine && o.status==='placed'){ act=`<button class="btn ghost sm" onclick="orderAct('${o.id}','cancel')">Annuler</button>`; }
+  return `<div class="box"><div class="row"><b class="grow">${roleTxt}</b><span class="muted">${timeago(o.time)}</span></div>
+   ${(o.items||[]).map(x=>`<div class="row" style="justify-content:space-between"><span>${x.qty}× ${esc(x.name)}</span><b>${fmtFCFA(x.price*x.qty)} FCFA</b></div>`).join('')}
+   <div class="muted" style="margin-top:2px">Total <b>${fmtFCFA(o.total)} FCFA</b>${o.place?(' · 📍 '+esc(o.place)):''}${o.note?(' · 💬 '+esc(o.note)):''}</div>
+   <div style="margin-top:8px;display:flex;align-items:center;justify-content:space-between;gap:8px"><span>${stMap[o.status]||esc(o.status)}</span>${act}</div></div>`; }
+async function orderAct(id,status){ const d=await db.collection('foodorders').doc(id).get(); if(!d.exists)return;
+  await d.ref.update({status,updatedAt:Date.now()});
+  toast(status==='done'?'🎉 Commande livrée':status==='confirmed'?'Commande confirmée':'Commande annulée'); shell(); }
+// --- Vue Resto (route) ---
+function foodBrowse(){
+  const list=foodToday.filter(m=>m.sellerId!==(curProfile&&curProfile.uid));
+  if(!list.length) return `<div class="center cardp muted" style="padding:26px;margin:4px 12px">Aucune cantinière n'a publié de menu aujourd'hui. Reviens en matinée !</div>`;
+  return `<div style="padding:0 12px 10px">${list.map(foodMenuCard).join('')}</div>`;
+}
+function restoV(){
+  let hero=`<div class="hero" style="background:linear-gradient(135deg,#E8542E,#F0851F);border-radius:0"><h1>🍽️ Repas du jour</h1><p>Les cantinières publient leur menu chaque matin. Commande avant l'heure limite et récupère ton plat à la pause. <b>Paiement à la livraison.</b></p></div>`;
+  let head='';
+  if(!curProfile){ head=`<div class="box"><div class="row"><div style="font-size:28px">🛵</div><div class="grow"><b>Commandé, livré, payé à la pause</b><p class="muted" style="margin:2px 0">Connecte-toi pour commander. Consulter les menus est libre.</p></div></div><button class="btn g" onclick="openAuth()">Se connecter</button></div>`; }
+  else if(!shopOf()){ head=`<div class="box" style="border-left:4px solid var(--grn)"><div class="row"><div style="font-size:30px">🍲</div><div class="grow"><b>Tu livres des repas à la pause ?</b><p class="muted" style="margin:2px 0">Ouvre ta cantinière : publie ton menu du jour, ta zone et ton créneau. Les commandes arrivent ici.</p></div></div><button class="btn g" onclick="foodEdit()">Ouvrir ma cantinière</button></div>`; }
+  const manage = (curProfile && shopOf()) ? foodManageHTML() : '';
+  const myOrdersBlock = (curProfile && myOrders.length) ? `<div style="padding:2px 12px"><h3 style="margin:12px 2px 6px">🛒 Mes commandes</h3>${myOrders.map(orderCard).join('')}</div>` : '';
+  return hero+`<div style="padding:10px 12px">${head||''}</div>${manage}
+   <div class="sectionTitle" style="padding-top:4px"><h3>🍱 Menus du jour</h3></div>
+   ${foodBrowse()}
+   ${myOrdersBlock}<div style="height:24px"></div>`;
+}
+function foodManageHTML(){
+  const sh=shopOf();
+  const today=foodToday.find(f=>f.sellerId===curProfile.uid);
+  const panel=`<div class="box" style="border-left:4px solid var(--org)"><div class="row"><b class="grow">${esc(sh.name)}</b><span class="muted">📦 ${esc(sh.zone)}</span></div>
+   <div class="muted">☕ commandes avant <b>${minHm(sh.cutoff)}</b> · 🛵 ${minHm(sh.winS)}–${minHm(sh.winE)}</div>
+   <div style="margin-top:8px"><button class="btn g sm" onclick="foodEdit()">${today?'✏️ Modifier le menu du jour':'➕ Publier le menu du jour'}</button></div></div>`;
+  const menuBlock = today ? `<div class="box"><b>🍽️ Menu du jour — ${esc(today.date)}</b>
+    ${(today.items||[]).map(it=>`<div class="row" style="justify-content:space-between;padding:3px 0"><span>• ${esc(it.name)}</span><b>${fmtFCFA(it.price)} FCFA</b></div>`).join('')}
+    <div class="muted" style="margin-top:4px">${menuOpen(today)?'🟢 Commandes ouvertes (avant '+minHm(today.cutoff)+')':"🔴 Commandes fermées pour aujourd'hui"}</div></div>` : `<p class="muted">Publie ton menu pour recevoir des commandes.</p>`;
+  const incoming = incOrders.length ? `<h3 style="margin:12px 2px 6px">📋 Commandes reçues (${incOrders.length})</h3>${incOrders.map(orderCard).join('')}` : `<p class="muted">Aucune commande reçue pour l'instant.</p>`;
+  return `<div style="padding:0 12px"><h2 style="margin:10px 2px 2px">Ma cantinière</h2>${panel}${menuBlock}${incoming}</div>`;
+}
+
 /* ============== INSTALLATION PWA ============== */
 let deferredPrompt=null;
 window.addEventListener('beforeinstallprompt',(e)=>{e.preventDefault();deferredPrompt=e;});
 async function installPWA(){ if(!deferredPrompt)return; deferredPrompt.prompt(); const c=await deferredPrompt.userChoice; deferredPrompt=null; toast('Merci ! Hametkro est installé 📲'); }
 
 /* ============== DÉMARRAGE ============== */
-try{ fb(); listenListings(); listenTx(); listenConvs(); }catch(e){ renderApp(`<div class="load"><div style="font-size:46px">⚠️</div><div>Erreur d'initialisation Firebase.</div><div class="muted">Ouvre cette page via le serveur (http), pas en fichier local, et vérifie firebase-config.js.</div></div>`);}
+try{ fb(); listenListings(); listenTx(); listenConvs(); listenFood(); }catch(e){ renderApp(`<div class="load"><div style="font-size:46px">⚠️</div><div>Erreur d'initialisation Firebase.</div><div class="muted">Ouvre cette page via le serveur (http), pas en fichier local, et vérifie firebase-config.js.</div></div>`);}
 </script>
 </body>
 </html>
