@@ -151,3 +151,17 @@ git push -u origin main
 > ⚠️ Pour une vraie mise en ligne il te faudra tes **comptes** Firebase / GitHub /
 > Google Play / Apple. Ce dépôt te fournit **100 % du code + config + CI + guide** ;
 > il ne reste qu'à y brancher tes identifiants.
+
+## 🔒 Navigation libre + Achat sécurisé + Commission Admin (dernière version)
+- **Visiteurs sans compte** : voient directement le fil et la fiche (description)
+  des annonces. Un compte n'est requis que pour **publier** un article ou
+  **contacter** un vendeur.
+- **Transaction sécurisée anti-arnaque** : accord sur le prix → choix remise
+  (🤝 main propre en lieu public OU 📦 livraison/point relais) → l'acheteur
+  confirme la réception et le vendeur confirme le paiement → clôture.
+  Litige possible, arbitré par l'admin.
+- **Commission admin 6 %** par vente validée, recalculée côté serveur
+  (`commission = price * 0.06`), tracée dans la collection `transactions`.
+- **Comptes démo** : membre `demo@hametkro.ci`/`demo1234` ·
+  Admin `admin@hametkro.ci`/`admin1234`.
+- Détails : `docs/SECURITE.md` · Règles : `firebase/firestore.rules`

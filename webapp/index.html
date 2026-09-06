@@ -5,421 +5,320 @@
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Hametkro 🇨🇮 — Seconde main</title>
 <style>
-  :root{
-    --org:#FF7A00; --org-d:#E06A00;
-    --grn:#009A44; --grn-d:#007A36;
-    --ink:#17150F; --grey:#6E6A5E; --line:#E9E6DD; --bg:#F7F6F1;
-    --white:#fff; --sang:#E6453C;
-    --r:16px;
-  }
+  :root{--org:#FF7A00;--org-d:#E06A00;--grn:#009A44;--grn-d:#007A36;--ink:#17150F;--grey:#6E6A5E;--line:#E9E6DD;--bg:#F7F6F1;--white:#fff;--sang:#E6453C}
   *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
   body{margin:0;font-family:'Segoe UI',Roboto,system-ui,Arial,sans-serif;background:#EFEDE6;color:var(--ink)}
   .shell{max-width:460px;margin:0 auto;min-height:100vh;background:var(--bg);box-shadow:0 0 0 1px var(--line);position:relative}
-  /* drapeau CI */
-  .flag{display:flex;height:4px}.flag span{flex:1}
-  .flag span:nth-child(1){background:var(--org)}
-  .flag span:nth-child(2){background:var(--white)}
-  .flag span:nth-child(3){background:var(--grn)}
-  .topbar{background:#fff;padding:12px 16px;border-bottom:1px solid var(--line);display:flex;align-items:center;gap:10px}
-  .logo{font-weight:900;font-size:22px;letter-spacing:.3px}
-  .logo b{color:var(--grn)} .logo i{color:var(--org);font-style:normal}
-  .logo small{display:block;color:var(--grey);font-weight:600;font-size:11px;letter-spacing:0}
+  .flag{display:flex;height:4px}.flag span{flex:1}.flag span:nth-child(1){background:var(--org)}.flag span:nth-child(2){background:#fff}.flag span:nth-child(3){background:var(--grn)}
+  .topbar{background:#fff;padding:11px 14px;border-bottom:1px solid var(--line);display:flex;align-items:center;gap:8px}
+  .logo{font-weight:900;font-size:20px}.logo b{color:var(--grn)}.logo i{color:var(--org);font-style:normal}
+  .logo small{display:block;color:var(--grey);font-weight:600;font-size:9.5px}
   .grow{flex:1}
-  .btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;background:var(--org);color:#fff;border:none;border-radius:14px;padding:14px;width:100%;font-size:15px;font-weight:800;cursor:pointer;font-family:inherit}
+  .btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;background:var(--org);color:#fff;border:none;border-radius:14px;padding:13px;width:100%;font-size:15px;font-weight:800;cursor:pointer;font-family:inherit}
   .btn:hover{background:var(--org-d)}
-  .btn.g{background:var(--grn)} .btn.g:hover{background:var(--grn-d)}
+  .btn.g{background:var(--grn)}.btn.g:hover{background:var(--grn-d)}
   .btn.ghost{background:#fff;color:var(--org);border:2px solid var(--org)}
-  .btn.ghostg{background:#fff;color:var(--grn);border:2px solid var(--grn)}
-  .input{width:100%;border:1.6px solid var(--line);background:#fff;border-radius:14px;padding:13px 14px;font-size:15px;outline:none;font-family:inherit;margin:7px 0}
+  .btn.sm{padding:9px 14px;width:auto;font-size:13px;border-radius:10px}
+  .btn:disabled{opacity:.6;cursor:not-allowed}
+  .input{width:100%;border:1.6px solid var(--line);background:#fff;border-radius:14px;padding:12px 14px;font-size:15px;outline:none;font-family:inherit;margin:6px 0}
   .input:focus{border-color:var(--org)}
-  label{font-size:12.5px;font-weight:700;color:var(--grey)}
-  .card{background:#fff;border:1px solid var(--line);border-radius:var(--r);overflow:hidden}
-  .row{display:flex;align-items:center;gap:8px}
-  .center{text-align:center}
-  .muted{color:var(--grey);font-size:12px}
-  .cardp{padding:20px}
+  label{font-size:12px;font-weight:700;color:var(--grey)}
+  .card{background:#fff;border:1px solid var(--line);border-radius:16px;overflow:hidden}
+  .cardp{padding:18px}
+  .row{display:flex;align-items:center;gap:8px}.center{text-align:center}.muted{color:var(--grey);font-size:12px}
   a{color:var(--org);cursor:pointer;font-weight:700;text-decoration:none}
-  .tagline{color:var(--grey)}
-  /* fil */
-  .grid{display:grid;grid-template-columns:1fr 1fr;gap:12px;padding:14px 14px 120px}
-  .tile .img{height:128px;position:relative;display:flex;align-items:center;justify-content:center;background:linear-gradient(135deg,#FCE8D6,#E5F4EA)}
-  .tile .img .e{font-size:52px}
-  .tile .img .new{position:absolute;left:8px;top:8px;background:var(--org);color:#fff;font-size:9px;font-weight:800;padding:3px 7px;border-radius:6px}
-  .tile .bd{padding:10px}
-  .tile .bd h4{margin:0 0 3px;font-size:13.5px;line-height:1.2}
-  .tile .pr{color:var(--grn);font-weight:900;font-size:15px}
-  .tile .me{margin-top:5px;display:flex;justify-content:space-between;color:var(--grey);font-size:10.5px}
-  .chips{display:flex;gap:8px;overflow-x:auto;padding:12px 14px;scrollbar-width:none}
-  .chips::-webkit-scrollbar{display:none}
-  .chip{white-space:nowrap;background:#fff;border:1.6px solid var(--line);border-radius:30px;padding:8px 14px;font-size:13px;cursor:pointer;font-weight:600;color:var(--ink)}
+  .grid{display:grid;grid-template-columns:1fr 1fr;gap:11px;padding:12px 12px 110px}
+  .tile .img{height:126px;position:relative;display:flex;align-items:center;justify-content:center;background:linear-gradient(135deg,#FCE8D6,#E5F4EA)}
+  .tile .img .e{font-size:50px}
+  .tile .img .new{position:absolute;left:8px;top:8px;background:var(--org);color:#fff;font-size:8.5px;font-weight:800;padding:3px 6px;border-radius:6px}
+  .tile .bd{padding:9px}.tile .bd h4{margin:0 0 3px;font-size:13px;line-height:1.2}
+  .tile .pr{color:var(--grn);font-weight:900;font-size:14.5px}
+  .tile .me{margin-top:5px;display:flex;justify-content:space-between;color:var(--grey);font-size:10px}
+  .chips{display:flex;gap:7px;overflow-x:auto;padding:10px 12px;scrollbar-width:none}.chips::-webkit-scrollbar{display:none}
+  .chip{white-space:nowrap;background:#fff;border:1.6px solid var(--line);border-radius:30px;padding:7px 13px;font-size:12.5px;cursor:pointer;font-weight:600}
   .chip.on{background:var(--org);border-color:var(--org);color:#fff}
-  .search{margin:0 14px 6px;position:relative}
-  .search .input{padding-left:40px}
-  .search .ic{position:absolute;left:14px;top:17px;color:var(--grey)}
-  .hdr{display:flex;align-items:center;padding:12px 14px 0}
-  .hdr h2{margin:0;font-size:20px}
-  /* nav */
+  .search{margin:2px 12px 4px;position:relative}.search .input{padding-left:38px;margin:0}.search .ic{position:absolute;left:14px;top:12px;color:var(--grey)}
+  .hdr{display:flex;align-items:center;padding:10px 12px}.hdr h2{margin:0;font-size:19px}
   .nav{position:sticky;bottom:0;left:0;width:100%;max-width:460px;margin:auto;background:#fff;border-top:1px solid var(--line);display:flex;z-index:30}
-  .nav button{flex:1;border:none;background:none;padding:9px 0 11px;font-size:9.5px;font-weight:600;color:var(--grey);cursor:pointer;font-family:inherit}
-  .nav button .i{font-size:21px;display:block}
-  .nav button.on{color:var(--org)}
-  .nav button.on .i{color:var(--grn)}
-  .fab{position:fixed;bottom:78px;left:50%;transform:translateX(-50%);z-index:40;margin-left:120px}
-  /* detail modal */
-  .modal{position:fixed;inset:0;z-index:60;display:none;background:#fff;max-width:460px;margin:0 auto;overflow:auto;padding-bottom:110px}
-  .mbar{position:sticky;top:0;background:#fff;padding:12px;display:flex;justify-content:space-between;z-index:5}
-  .mbig{height:260px;display:flex;align-items:center;justify-content:center;font-size:120px;background:linear-gradient(135deg,#FCE8D6,#E5F4EA)}
-  .toast{position:fixed;top:16px;left:50%;transform:translateX(-50%);background:#222;color:#fff;padding:12px 18px;border-radius:12px;z-index:99;opacity:0;transition:.3s;font-size:14px;max-width:90%;text-align:center}
+  .nav button{flex:1;border:none;background:none;padding:8px 0 10px;font-size:9px;font-weight:600;color:var(--grey);cursor:pointer;font-family:inherit}
+  .nav button .i{font-size:20px;display:block}
+  .nav button.on{color:var(--org)}.nav button.on .i{color:var(--grn)}
+  .modal{position:fixed;inset:0;z-index:60;display:none;background:#fff;max-width:460px;margin:0 auto;overflow:auto;padding-bottom:120px}
+  .toast{position:fixed;top:14px;left:50%;transform:translateX(-50%);background:#222;color:#fff;padding:11px 16px;border-radius:12px;z-index:99;opacity:0;transition:.3s;font-size:13.5px;max-width:92%;text-align:center}
   .scrim{position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:50;display:none}
-  .sheet{position:fixed;bottom:0;left:50%;transform:translateX(-50%);width:100%;max-width:460px;background:#fff;z-index:70;border-radius:20px 20px 0 0;padding:8px 20px 24px;max-height:92vh;overflow:auto}
-  .bgimg{height:200px;background:linear-gradient(135deg,var(--org),var(--grn));border-radius:0 0 26px 26px;display:flex;align-items:flex-end;padding:22px;color:#fff}
-  .catpill{display:inline-flex;align-items:center;gap:6px;border:1.6px solid var(--line);background:#fff;border-radius:30px;padding:9px 13px;font-size:13px;cursor:pointer;font-weight:600}
-  .catpill.on{border-color:var(--grn);background:var(--grn);color:#fff}
-  .chipCat{display:inline-flex;flex-direction:column;align-items:center;width:64px;padding:8px 2px;cursor:pointer}
-  .chipCat .ci{font-size:30px}
-  .chipCat span{font-size:9.5px;font-weight:700;text-align:center}
-  .chipCat.on{background:var(--grn);border-radius:14px} .chipCat.on span{color:#fff}
-  .listItem{display:flex;gap:12px;align-items:center;padding:12px;background:#fff;border:1px solid var(--line);border-radius:14px;margin:8px 0;cursor:pointer}
-  .av{width:46px;height:46px;border-radius:50%;background:linear-gradient(135deg,#FCE8D6,#E5F4EA);display:flex;align-items:center;justify-content:center;font-size:24px}
-  .statbox{display:flex;background:#fff;border:1px solid var(--line);border-radius:14px;padding:14px 6px;margin:10px 0}
-  .statbox .st{flex:1;text-align:center}
-  .statbox .st b{font-size:17px;display:block}
-  .statbox .st span{font-size:10.5px;color:var(--grey)}
-  .tag{background:#fff;border:1px solid var(--line);border-radius:10px;padding:5px 9px;font-size:11px;font-weight:600;color:var(--grey)}
-  .ok{color:var(--grn);font-weight:800}
-  .badge{display:inline-flex;align-items:center;background:var(--grn);color:#fff;font-size:10px;font-weight:700;padding:2px 6px;border-radius:8px}
+  .sheet{position:fixed;bottom:0;left:50%;transform:translateX(-50%);width:100%;max-width:460px;background:#fff;z-index:70;border-radius:18px 18px 0 0;padding:6px 18px 22px;max-height:92vh;overflow:auto}
   .chipGrid{display:grid;grid-template-columns:repeat(4,1fr);gap:8px}
-  .tiny{font-size:11px;color:var(--grey)}
+  .listItem{display:flex;gap:11px;align-items:center;padding:11px;background:#fff;border:1px solid var(--line);border-radius:13px;margin:7px 0;cursor:pointer}
+  .av{width:44px;height:44px;border-radius:50%;background:linear-gradient(135deg,#FCE8D6,#E5F4EA);display:flex;align-items:center;justify-content:center;font-size:22px;flex:none}
+  .statbox{display:flex;background:#fff;border:1px solid var(--line);border-radius:13px;padding:12px 4px;margin:9px 0}
+  .statbox .st{flex:1;text-align:center}.statbox .st b{font-size:16px;display:block}.statbox .st span{font-size:9.5px;color:var(--grey)}
+  .badge{display:inline-flex;align-items:center;background:var(--grn);color:#fff;font-size:9.5px;font-weight:700;padding:2px 7px;border-radius:8px}
+  .catpill{display:inline-flex;align-items:center;gap:5px;border:1.6px solid var(--line);background:#fff;border-radius:30px;padding:8px 12px;font-size:12.5px;cursor:pointer;font-weight:600}
+  .catpill.on{border-color:var(--grn);background:var(--grn);color:#fff}
+  .step{display:flex;gap:10px;margin:8px 0}.step .dot{width:22px;height:22px;border-radius:50%;background:#e4e6e1;flex:none;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:800}
+  .step.done .dot{background:var(--grn);color:#fff}.step.now .dot{background:var(--org);color:#fff}
+  .step .body{flex:1}.step .body b{font-size:13px}.step .body p{margin:2px 0;color:var(--grey);font-size:11.5px}
+  .green{color:var(--grn)}.org{color:var(--org)}.big{font-size:22px;font-weight:900}
+  .info{background:#eaf6ef;border:1px solid #bfe5cf;color:#0a6e3c;border-radius:12px;padding:10px;font-size:12px;margin:8px 0}
+  .warn{background:#fff5ea;border:1px solid #ffd9b8;color:#a3541b;border-radius:12px;padding:10px;font-size:12px;margin:8px 0}
+  .box{background:#fff;border:1px solid var(--line);border-radius:14px;padding:13px;margin:8px 0}
 </style>
 </head>
 <body>
-<div class="shell" id="shell">
+<div class="shell">
   <div class="flag"><span></span><span></span><span></span></div>
   <div id="app"></div>
 </div>
 <div class="toast" id="toast"></div>
-<div class="scrim" id="scrim" onclick="closeSheet()"></div>
+<div class="scrim" id="scrim" onclick="closeAll()"></div>
 <div class="sheet" id="sheet"></div>
+<div class="modal" id="modal"></div>
 
 <script>
-/* ================= DONNÉES ================= */
-const DB_KEY='ham_users', SESSION='ham_session', ITEMS_KEY='ham_items';
+/* ============ DONNÉES (localStorage — sera remplacé par Firebase) ========== */
+const DB='ham_v2', K_USERS='h_users', K_ITEMS='h_items', K_TX='h_tx', SESSION='h_session';
+const COMM_RATE=0.06; // commission admin 6% — configurable
 const CATS=[
  {id:'phone',e:'📱',n:'Téléphones'},{id:'computer',e:'💻',n:'Ordinateurs'},
  {id:'cars',e:'🚗',n:'Voitures & Moto'},{id:'fashion',e:'👗',n:'Mode & Friperie'},
  {id:'furniture',e:'🛋️',n:'Meubles'},{id:'electronics',e:'🎧',n:'Électronique'},
  {id:'sports',e:'⚽',n:'Sport & Loisirs'},{id:'books',e:'📚',n:'Livres'}];
 const CONDS=['Neuf','Comme neuf','Très bon état','Bon état','Correct','À réparer'];
-function catOf(id){let c=CATS.find(x=>x.id==id);return c||CATS[3];}
-let users=JSON.parse(localStorage.getItem(DB_KEY)||'[]');
-let items=JSON.parse(localStorage.getItem(ITEMS_KEY)||'[]');
-// données de départ si vide (pour un compte "démo@hametkro.ci")
+let users=load(K_USERS,[]),items=load(K_ITEMS,[]),txs=load(K_TX,[]);
 seed();
-function uid(){return 'u'+Math.random().toString(36).slice(2,10);}
-function iid(){return 'i'+Math.random().toString(36).slice(2,10);}
-function saveUsers(){localStorage.setItem(DB_KEY,JSON.stringify(users));}
-function saveItems(){localStorage.setItem(ITEMS_KEY,JSON.stringify(items));}
-function session(){try{return JSON.parse(localStorage.getItem(SESSION));}catch(e){return null;}}
-function me(){let s=session();if(!s)return null;return users.find(u=>u.id==s.id)||null;}
-function timeago(d){let s=(Date.now()-d)/1000;if(s<60)return "à l'instant";if(s<3600)return Math.floor(s/60)+" min";if(s<86400)return Math.floor(s/3600)+" h";return Math.floor(s/86400)+" j";}
-function fmt(n){return n.toString().replace(/\B(?=(\d{3})+(?!\d))/g,' ');}
+function load(k,d){try{return JSON.parse(localStorage.getItem(k))||d}catch(e){return d}}
+function save(k,v){localStorage.setItem(k,JSON.stringify(v))}
+function uid(){return 'u'+Math.random().toString(36).slice(2,10)}
+function iid(){return 'i'+Math.random().toString(36).slice(2,10)}
+function catOf(id){return CATS.find(c=>c.id===id)||CATS[3]}
+function me(){let s=session();return (s?users.find(u=>u.id===s):null)||null}
+function session(){try{return JSON.parse(localStorage.getItem(SESSION))}catch(e){return null}}
+function isAdmin(){let u=me();return u&&u.role==='admin'}
+function timeago(d){let s=(Date.now()-d)/1000;if(s<60)return "à l'instant";if(s<3600)return Math.floor(s/60)+' min';if(s<86400)return Math.floor(s/3600)+' h';return Math.floor(s/86400)+' j'}
+function fmt(n){return Math.round(n).toString().replace(/\B(?=(\d{3})+(?!\d))/g,' ')}
+function esc(s){return String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]))}
+function toast(m){let t=document.getElementById('toast');t.innerHTML=m;t.style.opacity=1;clearTimeout(t._h);t._h=setTimeout(()=>t.style.opacity=0,2400)}
+function closeAll(){document.getElementById('scrim').style.display='none';document.getElementById('sheet').style.display='none';document.getElementById('modal').style.display='none'}
+function openSheet(html){closeAll();document.getElementById('sheet').innerHTML=html;document.getElementById('scrim').style.display='block';document.getElementById('sheet').style.display='block'}
+function openModal(html){closeAll();document.getElementById('modal').innerHTML=html;document.getElementById('modal').style.display='block'}
 function seed(){
-  if(!items.length){
-    const demo=[
-      ['Dress&Tel','phone','Samsung Galaxy A54 128 Go',145000,'Abidjan',"Très bon état",'128 Go'],
-      ['LadyNé','fashion',"Robe wax ivoirienne taille M",6500,'Abidjan','Très bon état','M'],
-      ['Sécurity','computer','HP ProBook i5 / 8 Go / SSD',225000,'Abidjan','Bon état','15.6" i5'],
-      ['BambaTech','fashion','Sneakers & sacs friperie (lot)',15000,'Abidjan','Comme neuf','L'],
-      ['AwaShop','cars','Toyota Corolla 2012 essence',4300000,'Abidjan','Correct','Essence'],
-      ['FouadElec','electronics','Écouteurs sans fil Sony',25000,'Abidjan','Comme neuf','—'],
-      ['Dress&Tel','phone','iPhone XR 64 Go',185000,'Abidjan','Très bon état','64 Go'],
-      ['LadyNé','furniture','Canapé 3 places tissu',95000,'Bouaké','Bon état','3 places']];
-    demo.forEach(d=>items.push({id:iid(),cat:d[1],t:d[2],p:d[3],city:d[4],cond:d[5],size:d[6],seller:d[0],img:'',time:Date.now()-Math.random()*5*864e5,sold:Math.random()>.8}));
-    // compte démo
-    if(!users.find(u=>u.email==='demo@hametkro.ci')){users.push({id:uid(),name:'Aïcha Kouassi',email:'demo@hametkro.ci',pass:'demo1234',city:'Abidjan'});}
-    saveItems();saveUsers();
+  if(!users.some(u=>u.email==='admin@hametkro.ci')){
+    users.push({id:'admin',name:'Aïcha Kouassi (Admin)',email:'admin@hametkro.ci',pass:'admin1234',city:'Abidjan',country:'Côte d\'Ivoire',countryCode:'CI',role:'admin',created:Date.now()});
   }
+  if(!users.some(u=>u.email==='demo@hametkro.ci')){
+    users.push({id:'u_demo',name:'Aïcha Kouassi',email:'demo@hametkro.ci',pass:'demo1234',city:'Abidjan',country:'Côte d\'Ivoire',countryCode:'CI',created:Date.now()});
+  }
+  if(!items.length){
+    const demo=[['phone','Samsung Galaxy A54 128 Go',145000,'Abidjan','Très bon état','128 Go','📱'],
+     ['fashion','Robe wax ivoirienne taille M',6500,'Abidjan','Très bon état','M','👗'],
+     ['computer','HP ProBook i5 / 8 Go / SSD',225000,'Abidjan','Bon état','15.6" i5','💻'],
+     ['fashion','Sneakers & sacs friperie (lot)',15000,'Abidjan','Comme neuf','L','👟'],
+     ['cars','Toyota Corolla 2012 essence',4300000,'Abidjan','Correct','Essence','🚗'],
+     ['electronics','Écouteurs sans fil Sony',25000,'Abidjan','Comme neuf','—','🎧'],
+     ['phone','iPhone XR 64 Go',185000,'Abidjan','Très bon état','64 Go','📱'],
+     ['furniture','Canapé 3 places tissu',95000,'Bouaké','Bon état','3 places','🛋️']];
+    demo.forEach(d=>items.push({id:iid(),cat:d[0],t:d[1],p:d[2],city:d[3],cond:d[4],size:d[5],seller:'Adja Shop',sellerId:'u_demo',img:'',time:Date.now()-Math.random()*5*864e5,sold:false,status:'active',views:0}));
+    save(K_ITEMS,items);
+  }
+  save(K_USERS,users);
 }
-/* ================= UI HELPERS ================= */
-function toast(m){let t=document.getElementById('toast');t.textContent=m;t.style.opacity=1;clearTimeout(t._h);t._h=setTimeout(()=>t.style.opacity=0,2400);}
-function closeSheet(){document.getElementById('scrim').style.display='none';document.getElementById('sheet').style.display='none';}
-function openSheet(html){let s=document.getElementById('sheet');s.innerHTML=html;document.getElementById('scrim').style.display='block';s.style.display='block';}
-function shield(html){let s=document.getElementById('sheet');s.innerHTML=`<div class="cardp">${html}</div>`;document.getElementById('scrim').style.display='block';s.style.display='block';}
-function renderApp(html){document.getElementById('app').innerHTML=html;}
-
-/* ================= ROUTAGE ================= */
-function boot(){ (me()? shell : auth)(); }
-let current='home', catFilter='all';
-function auth(){
-  renderApp(`<div style="padding:26px 24px">
-    <div class="center"><div style="font-size:54px">🔄</div>
-      <div class="logo" style="font-size:30px"><b>hamet</b><i>kro</i></div>
-      <p class="tagline">Le marché de la seconde main de la <b style="color:var(--org)">Côte d'Ivoire 🇨🇮</b><br>Vends et achète près de chez toi.</p>
-    </div>
-    <div style="height:14px"></div>
-    <button class="btn" onclick="goLogin()">Se connecter</button>
-    <div style="height:10px"></div>
-    <button class="btn g" onclick="goRegister()">Créer un compte</button>
-    <div style="height:14px"></div>
-    <p class="muted center">Compte démo : <b>demo@hametkro.ci</b> / <b>demo1234</b></p>
-    <div class="cardp" style="background:#fff;border:1px solid var(--line);border-radius:14px;margin-top:10px">
-      <b>💡 Pourquoi Hametkro ?</b>
-      <p class="muted" style="margin:6px 0">💰 Trouve des bonnes affaires & gagne de l'argent en vendant tes objets inutiles.<br>
-      🌍 Tu vois les articles des vendeurs de <b>ton pays</b>.<br>
-      💚 Acheter d'occasion, c'est bon pour la planète.</p>
-    </div>
-  </div>`);
-}
-function goLogin(){ showForm(true); }
-function goRegister(){ showForm(false); }
-function showForm(isLogin){
-  let up = isLogin?`
-     <label>Email</label><input id="le" class="input" type="email" placeholder="ton@email.com">
-     <label>Mot de passe</label><input id="lp" class="input" type="password" placeholder="••••••••">
-     <div style="height:8px"></div><button class="btn" onclick="doLogin()">Se connecter →</button>
-     <div class="center muted" style="padding:12px">Pas encore de compte ? <a onclick="goRegister()">S'inscrire</a></div>`
-   :`
-     <label>Nom complet</label><input id="rn" class="input" placeholder="Ex : Aïcha Kouassi">
-     <label>Email</label><input id="re" class="input" type="email" placeholder="ton@email.com">
-     <label>Téléphone</label><input id="rp" class="input" type="tel" placeholder="+225 07 00 00 00 00">
-     <label>Ville</label><input id="rc" class="input" value="Abidjan">
-     <label>Mot de passe</label><input id="rpass" class="input" type="password" placeholder="min. 6 caractères">
-     <div style="height:8px"></div><button class="btn g" onclick="doRegister()">Créer mon compte →</button>
-     <div class="center muted" style="padding:12px">Déjà inscrit ? <a onclick="goLogin()">Se connecter</a></div>`;
-  renderApp(`<div style="padding:0 24px 30px">
-     <div style="cursor:pointer;padding:14px 0" onclick="auth()">← Retour</div>
-     <div class="bgimg" style="height:150px"><div>
-       <div class="logo" style="font-size:24px;color:#fff"><b>hamet</b>kro</div>
-       <div style="font-size:13px;opacity:.95">${isLogin?'Content de te revoir 👋':'Rejoins la communauté du réemploi 💚'}</div>
-     </div></div>
-     <div class="cardp" style="margin-top:-30px;background:#fff;border:1px solid var(--line);border-radius:18px;position:relative">
-       <h2 style="margin:0 0 6px">${isLogin?'Connexion':'Inscription'}</h2>
-       <p class="muted">Marché par défaut : <b>Côte d'Ivoire 🇨🇮</b></p>
-       ${up}
-     </div>
-   </div>`);
-}
-function doLogin(){
-  let e=document.getElementById('le').value.trim().toLowerCase(), p=document.getElementById('lp').value;
-  let u=users.find(x=>x.email===e&&x.pass===p);
-  if(!u)return toast('❌ Email ou mot de passe incorrect.');
-  localStorage.setItem(SESSION,JSON.stringify({id:u.id})); toast('✅ Bienvenue, '+u.name.split(' ')[0]+' !'); shell();
-}
-function doRegister(){
-  let n=document.getElementById('rn').value.trim(),e=document.getElementById('re').value.trim().toLowerCase(),
-     p=document.getElementById('rpass').value, city=document.getElementById('rc').value.trim()||'Abidjan';
-  if(n.length<2)return toast('Entre ton nom complet.');
-  if(!/^\S+@\S+\.\S+$/.test(e))return toast('Email invalide.');
-  if(p.length<6)return toast('Mot de passe : min 6 caractères.');
-  if(users.find(x=>x.email===e))return toast('Cet email existe déjà. Connecte-toi.');
-  let u={id:uid(),name:n,email:e,pass:p,city,country:'Côte d\'Ivoire',countryCode:'CI',created:Date.now(),rating:5,reviews:0,sold:0};
-  users.push(u);saveUsers();localStorage.setItem(SESSION,JSON.stringify({id:u.id}));
-  toast('🎉 Compte créé !'); shell();
-}
-function logout(){localStorage.removeItem(SESSION);toast('À bientôt 👋');boot();}
-
-/* ================= COQUILLE PRINCIPALE ================= */
+/* ============== ROUTAGE =============== */
+let view='home', catF='all', q='';
+function boot(){ shell(); }
+/* Guest = browse without account */
 function shell(){
-  let u=me(); if(!u)return auth();
-  let nav=`<div class="nav">
-    <button class="${current==='home'?'on':''}" onclick="current='home';shell()"><span class="i">🏠</span>Accueil</button>
-    <button class="${current==='sell'?'on':''}" onclick="current='sell';shell()"><span class="i">🗂️</span>Catégories</button>
-    <button onclick="sellSheet()"><span class="i" style="font-size:15px;background:var(--org);color:#fff;border-radius:50%;width:42px;height:42px;display:inline-flex;align-items:center;justify-content:center;margin-top:-22px">➕</span>Vendre</button>
-    <button class="${current==='mine'?'on':''}" onclick="current='mine';shell()"><span class="i">📦</span>Mes articles</button>
-    <button class="${current==='me'?'on':''}" onclick="current='me';shell()"><span class="i">👤</span>Compte</button>
-  </div>`;
-  let body = current==='home'?homeView(): current==='sell'?catView(): current==='mine'?mineView(): profileView();
-  renderApp(`
-    <div class="topbar">
-      <div class="logo grow"><b>hamet</b><i>kro</i><small>${u.country} ${u.countryCode==='CI'?'🇨🇮':'🌍'} · ${u.city}</small></div>
-      <div style="font-size:11px;color:var(--grey);text-align:right">Salut,<br><b style="color:var(--ink)">${u.name.split(' ')[0]}</b></div>
-    </div>
-    ${body}${nav}`);
-  // scroll helper
+  let u=me();
+  let body = view==='home'?homeV(): view==='sell'?sellV(): view==='mine'?mineV(): view==='me'?profileV(): view==='admin'?adminV(): homeV();
+  let top = u? `<div class="logo grow"><b>hamet</b><i>kro</i><small>${u.country} ${u.countryCode==='CI'?'🇨🇮':'🌍'} · ${esc(u.city)}</small></div>
+      <div style="text-align:right;font-size:11px;color:var(--grey)">${esc(u.name.split(' ')[0])} ${u.role==='admin'?'<span class="badge">ADMIN</span>':''}</div>`
+    : `<div class="logo grow"><b>hamet</b><i>kro</i><small>Côte d'Ivoire 🇨🇮 · navigation libre</small></div>
+      <button class="btn g sm" onclick="openAuth()">Se connecter</button>`;
+  let nav=[
+   ['home','🏠','Accueil'],
+   ['sell','🗂️','Catégories'],
+   ['mine','➕','Vendre'],
+   ['me','👤','Compte'],
+  ].map(([k,i,l])=>`<button class="${view===k?'on':''}" onclick="view='${k}';shell()"><span class="i">${i}</span>${l}</button>`).join('');
+  if(isAdmin()) nav = nav.replace(/👤.*?<\/button>/,'') + `<button class="${view==='admin'?'on':''}" onclick="view='admin';shell()"><span class="i">📊</span>Admin</button>`;
+  renderApp(`<div class="topbar">${top}</div>${body}
+    <div class="nav">${nav}</div>`);
   document.documentElement.scrollTop=0;
 }
-function homeView(){
-  let u=me();
-  let list = items.filter(it=>it.sold!==true && (catFilter==='all'||it.cat===catFilter));
-  let chips=`<div class="chips"><div class="chip ${catFilter==='all'?'on':''}" onclick="catFilter='all';shell()">Tout</div>`+
-    CATS.map(c=>`<div class="chip ${catFilter===c.id?'on':''}" onclick="catFilter='${c.id}';shell()">${c.e} ${c.n}</div>`).join('')+`</div>`;
-  let cards = list.length? `<div class="grid">${list.map(tile).join('')}</div>`
-    :`<div class="center cardp muted">Aucun article dans cette catégorie pour le moment.<br>Sois la première à vendre ! 🛍️</div>`;
-  return `<div class="bgimg" style="padding:16px 16px 20px">
-      <div style="width:100%"><div style="font-size:12px;opacity:.9">Le marché 100% seconde main du pays</div>
-      <div style="font-size:24px;font-weight:900;margin:4px 0 10px">Trouve la bonne affaire 💛</div>
-      <div class="row" style="background:#fff;border-radius:14px;padding:4px 6px 4px 14px">
-        <span style="font-size:17px">🔍</span>
-        <input id="q" class="input" style="border:none;margin:0;padding:10px 4px;flex:1" placeholder="Rechercher (téléphone, robe, voiture…)" oninput="liveSearch()">
-      </div></div>
-    </div>
-    ${chips}
-    <div class="grid" id="grid">${cards}</div>`;
-}
-function liveSearch(){
-  let v=(document.getElementById('q')?.value||'').toLowerCase();let g=document.getElementById('grid');
-  if(!g)return;
-  let l=items.filter(it=>it.sold!==true&&(catFilter==='all'||it.cat===catFilter)&&(!v||it.t.toLowerCase().includes(v)||it.city.toLowerCase().includes(v)));
-  g.innerHTML=l.length?l.map(tile).join(''):'<div class="center cardp muted" style="grid-column:1/-1">Aucun résultat pour « '+v+' »</div>';
-}
-function tile(it){
-  let img = it.img?`<img src="${it.img}" style="width:100%;height:100%;object-fit:cover;position:absolute;inset:0">`:`<span class="e">${catOf(it.cat).e}</span>`;
-  return `<div class="card tile" onclick="detail('${it.id}')">
-    <div class="img"><div style="width:100%;height:100%;display:flex;align-items:center;justify-content:center">${img}</div>
-      <span class="new">NOUVEAU</span></div>
-    <div class="bd"><h4>${it.t}</h4><div class="pr">${fmt(it.p)} FCFA</div>
-      <div class="me"><span>📍 ${it.city}</span><span>${timeago(it.time)}</span></div>
-    </div></div>`;
-}
-function detail(id){
-  let it=items.find(x=>x.id===id);let img=it.img?`<img src="${it.img}" style="width:100%;height:100%;object-fit:cover">`:`<div style="font-size:120px">${catOf(it.cat).e}</div>`;
-  document.getElementById('scrim').style.display='block';
-  let m=document.getElementById('sheet'); m.style.display='block'; m.style.maxWidth='460px'; m.style.maxHeight='96vh';
-  m.innerHTML=`<div class="mbar"><span style="cursor:pointer;font-size:20px" onclick="closeSheet()">✕</span><b style="color:var(--grn)">${catOf(it.cat).e} ${catOf(it.cat).n}</b><span style="font-size:18px;cursor:pointer">📤</span></div>
-   <div style="height:250px;display:flex;align-items:center;justify-content:center;overflow:hidden">${img}</div>
-   <div style="padding:18px">
-     <h2 style="margin:0">${it.t}</h2>
-     <div class="tiny">📍 ${it.city}, ${it.country||'Côte d\'Ivoire'} · ${timeago(it.time)}</div>
-     <div style="font-size:26px;font-weight:900;color:var(--grn);margin:8px 0">${fmt(it.p)} FCFA <span class="tag" style="vertical-align:middle">${it.cond}</span></div>
-     <div class="row" style="gap:6px;flex-wrap:wrap;margin:8px 0">${it.size&&it.size!=='—'?`<span class="tag">📐 ${it.size}</span>`:''}<span class="tag">🤝 Négociable</span><span class="tag">💚 ~${eco(it.cat)} kg CO₂</span></div>
-     <div class="listItem" style="background:#F7F6F1">
-       <div class="av">${it.sellerAvatar||'🛍️'}</div><div class="grow"><b>${it.seller}</b><br><span class="muted">Vendeur ${it.city}</span></div><span class="badge">Vérifié</span>
-     </div>
-     <div style="height:10px"></div>
-     <button class="btn g">💬 Contacter le vendeur</button>
-     <p class="muted center" style="margin-top:8px">🔒 Paie à la remise du bien. Jamais d'avance.</p>
-   </div>`;
-}
-function eco(c){const m={phone:48,computer:200,cars:3500,fashion:5,furniture:150,electronics:30,sports:25,books:2};return m[c]||10;}
+function renderApp(h){document.getElementById('app').innerHTML=h}
 
-/* catégories */
-function catView(){
-  let u=me();
-  let rows=CATS.map(c=>{let n=items.filter(it=>!it.sold&&it.sellerId===u.id&&it.cat===c.id).length;return n;});
-  return `<div class="hdr"><h2>Vendre par catégorie</h2></div>
-    <p class="muted" style="padding:0 16px">Choisis une catégorie pour publier ton article en moins d'une minute.</p>
-    <div style="padding:8px 16px" class="chipGrid">
-      ${CATS.map(c=>`<div class="card tile" style="padding:12px 4px;text-align:center" onclick="sellSheet('${c.id}')">
-        <div style="font-size:30px">${c.e}</div><div style="font-size:10.5px;font-weight:700;margin-top:4px">${c.n}</div>
-      </div>`).join('')}
-    </div>
-    <div style="padding:20px 16px">
-      <div class="cardp" style="background:linear-gradient(135deg,#fff,#FDF0E2);border:1px solid var(--line);border-radius:16px">
-        <b>💡 Conseil</b><p class="muted" style="margin:6px 0">Ajoute de belles photos, un titre clair et un prix honnête : tu vendras 3× plus vite. Photos nettes + prix correct = confiance.</p>
-      </div>
-    </div>`;
-}
+/* ============ AUTH ============ */
+function openAuth(mode){ openModal(`
+  <div class="cardp">
+    <div style="display:flex;justify-content:space-between"><b style="font-size:18px">${mode==='sell'?'Créer un compte pour vendre':'Connexion / Inscription'}</b><span style="cursor:pointer;font-size:20px" onclick="closeAll()">✕</span></div>
+    ${mode==='sell'?'<div class="info">Pour publier un article, il te faut un compte gratuit (2 min). La navigation et la consultation restent libres sans compte.</div>':''}
+    <div class="row" style="gap:8px;margin:10px 0"><button class="btn g grow" onclick="openAuthForm(false)">Créer un compte</button><button class="btn ghost grow" onclick="openAuthForm(true)">Se connecter</button></div>
+    <p class="muted center">Admin : admin@hametkro.ci / admin1234<br>Démo : demo@hametkro.ci / demo1234</p>
+  </div>`); }
+function openAuthForm(login){ openModal(`<div class="cardp">
+  <div style="cursor:pointer" onclick="openAuth()">←</div>
+  <b style="font-size:18px">${login?'Connexion':'Créer mon compte'}</b>
+  ${login?`
+    <label>Email</label><input id="le" class="input" type="email" placeholder="ton@email.com">
+    <label>Mot de passe</label><input id="lp" class="input" type="password" placeholder="••••••••">
+    <button class="btn g" onclick="doLogin()">Se connecter</button>`
+  :`
+    <label>Nom complet</label><input id="rn" class="input" placeholder="Ex : Aïcha Kouassi">
+    <label>Email</label><input id="re" class="input" type="email" placeholder="ton@email.com">
+    <label>Téléphone</label><input id="rp" class="input" type="tel" placeholder="+225 07 00 00 00 00">
+    <label>Ville</label><input id="rc" class="input" value="Abidjan">
+    <label>Mot de passe (min 6)</label><input id="rpass" class="input" type="password">
+    <button class="btn g" onclick="doRegister()">Créer mon compte</button>`}
+</div>`);}
+function doLogin(){let e=val('le'),p=val('lp');let u=users.find(x=>x.email===e&&x.pass===p);if(!u)return toast('❌ Email ou mot de passe incorrect.');sessionSet(u);toast('Bienvenue '+esc(u.name.split(' ')[0])+' 👋');view='home';closeAll();shell();}
+function doRegister(){let n=val('rn'),e=val('re').toLowerCase(),p=val('rpass'),city=val('rc')||'Abidjan';
+ if(n.length<2)return toast('Entre ton nom complet');if(!/^\S+@\S+\.\S+$/.test(e))return toast('Email invalide');if(p.length<6)return toast('Mot de passe : min 6');
+ if(users.find(u=>u.email===e))return toast('Cet email existe déjà. Connecte-toi.');
+ let u={id:uid(),name:n,email:e,pass:p,city,country:'Côte d\'Ivoire',countryCode:'CI',created:Date.now()};users.push(u);save(K_USERS,users);sessionSet(u);toast('🎉 Compte créé');view='home';closeAll();shell();}
+function val(id){let x=document.getElementById(id);return x?x.value:''}
+function sessionSet(u){localStorage.setItem(SESSION,JSON.stringify({id:u.id}))}
+function logout(){localStorage.removeItem(SESSION);view='home';toast('Déconnecté');shell()}
+function requireUser(action){let u=me();if(u)return u;openAuth(action);return null}
 
-/* mes articles */
-function mineView(){
-  let u=me();
-  let mine=items.filter(it=>it.sellerId===u.id);
-  let onSale=mine.filter(it=>!it.sold).length;
-  return `<div class="hdr"><h2>Mes articles</h2><span class="badge" style="margin-left:8px">${onSale} en vente</span></div>
-    <div class="statbox">
-      <div class="st"><b>${mine.length}</b><span>publiés</span></div>
-      <div class="st"><b>${onSale}</b><span>en vente</span></div>
-      <div class="st"><b>${mine.filter(it=>it.sold).length}</b><span>vendus</span></div>
-      <div class="st"><b>${u.rating||5}★</b><span>note</span></div>
-    </div>
-    ${mine.length? `<div style="padding:0 14px 20px">${mine.map(tile).join('')}</div>`
-      :`<div class="center cardp muted" style="padding:40px 20px">Tu n'as encore rien publié.<br>Ajoute ton premier article à vendre ! 🚀<div style="height:12px"></div><div style="width:200px;margin:auto"><button class="btn g" onclick="sellSheet()">➕ Vendre un article</button></div></div>`}`;
+/* ============ HOME (visible sans compte) ============ */
+function homeV(){
+  let qq=q.toLowerCase();let list=items.filter(it=>!it.sold&&(catF==='all'||it.cat===catF)&&(!qq||it.t.toLowerCase().includes(qq)||it.city.toLowerCase().includes(qq)));
+  let chips=`<div class="chips"><div class="chip ${catF==='all'?'on':''}" onclick="catF='all';shell()">Tout</div>`+CATS.map(c=>`<div class="chip ${catF===c.id?'on':''}" onclick="catF='${c.id}';shell()">${c.e} ${c.n}</div>`).join('')+`</div>`;
+  let cards=list.length?`<div class="grid">${list.map(tile).join('')}</div>`:`<div class="center cardp muted">Aucun article pour l'instant.</div>`;
+  return `<div class="search"><span class="ic">🔍</span><input class="input" id="q" placeholder="Rechercher (téléphone, robe, voiture…)" oninput="q=this.value;shell()"></div>${chips}${cards}`;
 }
-/* compte */
-function profileView(){
-  let u=me();
-  let mine=items.filter(it=>it.sellerId===u.id);
-  return `<div class="hdr"><h2>Mon compte</h2></div>
-    <div style="padding:6px 14px">
-      <div class="listItem"><div class="av">${u.name[0]||'🙂'}</div><div class="grow"><b>${u.name}</b><br><span class="muted">${u.email}</span></div><span class="badge">Vérifié ✅</span></div>
-      <div class="statbox">
-        <div class="st"><b>${u.rating||5}★</b><span>note</span></div>
-        <div class="st"><b>${u.reviews||0}</b><span>avis</span></div>
-        <div class="st"><b>${mine.filter(it=>it.sold).length}</b><span>ventes</span></div>
-        <div class="st"><b>${items.length}</b><span>marché</span></div>
-      </div>
-      <div class="card"><div class="cardp">
-        <b>📍 Mon marché</b>
-        <p class="muted" style="margin:4px 0">Tu vois & vends dans :</p>
-        <div class="chip on" style="cursor:default;background:var(--grn);color:#fff">🇨🇮 ${u.country} · ${u.city}</div>
-        <p class="tiny" style="margin-top:8px">Bientôt : changer de pays pour élargir le marché.</p>
-      </div></div>
-      <div style="height:14px"></div>
-      <button class="btn ghost" onclick="logout()">Se déconnecter</button>
-    </div>`;
-}
+function tile(it){let f=me();let mine=f&&it.sellerId===f.id;
+ return `<div class="card tile" onclick="detail('${it.id}')">
+   <div class="img">${it.img?`<img src="${it.img}" style="width:100%;height:100%;object-fit:cover">`:`<span class="e">${catOf(it.cat).e}</span>`}
+     <span class="new">${Date.now()-it.time<3*864e5?'NOUVEAU':''}</span></div>
+   <div class="bd"><h4>${esc(it.t)}</h4><div class="pr">${fmt(it.p)} FCFA</div>
+     <div class="me"><span>📍 ${esc(it.city)}</span><span>${timeago(it.time)}</span></div></div></div>`;}
 
-/* ============ VENDRE (ajouter un article) ============ */
-function sellSheet(precat){
-  let upId='p'+Math.random().toString(36).slice(2,7);
-  let preselect=precat?'checked':`checked`;
-  openSheet(`
-    <div class="row" style="justify-content:space-between;padding:12px 0 4px"><h2 style="margin:0">Vendre un article</h2><span class="x" style="font-size:22px;cursor:pointer" onclick="closeSheet()">✕</span></div>
-    <p class="muted" style="margin-top:2px">Marché : <b>Côte d'Ivoire 🇨🇮</b></p>
-    <label>Catégorie *</label>
-    <div class="row" style="gap:6px;flex-wrap:wrap;margin:6px 0">
-      ${CATS.map(c=>`<span class="catpill" data-cat="${c.id}" onclick="pickCat(this)">${c.e} ${c.n}</span>`).join('')}
-    </div>
-    <input type="hidden" id="${upId}_cat" value="fashion">
-    <label>Photos</label>
-    <div class="row" style="gap:8px;margin:6px 0"><div class="photoAdd" id="${upId}_ph" onclick="pickImage('${upId}')" style="width:92px;height:92px;border:2px dashed var(--org);border-radius:14px;display:flex;align-items:center;justify-content:center;color:var(--org);background:#FFF7EF;cursor:pointer">📷<br>Photo</div></div>
-    <input type="hidden" id="${upId}_img">
-    <label>Titre *</label><input id="${upId}_t" class="input" placeholder="Ex : Robe wax taille M, Samsung A54…">
-    <div class="row" style="gap:8px;align-items:flex-start">
-      <div class="grow"><label>Prix (FCFA) *</label><input id="${upId}_p" class="input" type="number" placeholder="Ex : 15000"></div>
-      <div style="width:110px"><label>Ville</label><input id="${upId}_c" class="input" value="Abidjan"></div>
-    </div>
-    <label>État</label>
-    <div class="row" style="gap:6px;flex-wrap:wrap;margin:6px 0">${CONDS.map((c,i)=>`<span class="catpill ${i===3?'on':''}" data-c="${c}" onclick="this.parentNode.querySelectorAll('.catpill').forEach(x=>x.classList.remove('on'));this.classList.add('on')">${c}</span>`).join('')}</div>
-    <input type="hidden" id="${upId}_cond" value="Bon état">
-    <label>Description</label><textarea id="${upId}_d" class="input" rows="3" placeholder="État réel, défauts, année, raison de la vente…"></textarea>
-    <div style="height:12px"></div>
-    <button class="btn g" onclick="publish('${upId}')">Publier mon annonce 🎉</button>
-    <div style="height:8px"></div>
-    <p class="muted center" style="font-size:11px">Publication gratuite · article vu dans tout le pays 🇨🇮</p>`);
-  document.querySelector('.photoAdd').style.flexDirection='column';
-}
-function pickCat(el){
-  document.querySelectorAll('.catpill[data-cat]').forEach(x=>x.classList.remove('on'));
-  el.classList.add('on');
-  let hid=el.closest('#sheet').querySelector('input[type=hidden]'); if(hid)hid.value=el.dataset.cat;
-}
-function pickImage(id){
-  let input=document.createElement('input');input.type='file';input.accept='image/*';
-  input.onchange=e=>{
-    let f=e.target.files[0];if(!f)return;
-    let r=new FileReader();
-    r.onload=()=>{
-      // réduire pour la mémoire locale
-      let img=new Image();img.onload=()=>{
-        let max=520,scale=Math.min(1,max/Math.max(img.width,img.height));
-        let cv=document.createElement('canvas');cv.width=img.width*scale;cv.height=img.height*scale;
-        cv.getContext('2d').drawImage(img,0,0,cv.width,cv.height);
-        let data=cv.toDataURL('image/jpeg',.8);
-        let box=document.getElementById(id+'_ph');box.innerHTML='<img src="'+data+'" style="width:92px;height:92px;object-fit:cover;border-radius:14px">';
-        document.getElementById(id+'_img').value=data;
-      };img.src=r.result;
-    };r.readAsDataURL(f);
-  };input.click();
-}
-function selCond(id,val){document.getElementById(id+'_cond').value=val;}
-function publish(id){
-  let t=document.getElementById(id+'_t').value.trim();
-  let p=parseFloat(document.getElementById(id+'_p').value);
-  let city=document.getElementById(id+'_c').value.trim()||'Abidjan';
-  let img=document.getElementById(id+'_img').value;
-  let d=document.getElementById(id+'_d').value.trim();
-  let cond=document.getElementById(id+'_cond').value;
+/* ============ DETAIL (visible sans compte) ============ */
+function detail(id){let it=items.find(x=>x.id===id);let u=me();let mine=u&&it.sellerId===u.id;
+ let img=it.img?`<img src="${it.img}" style="width:100%;max-height:260px;object-fit:cover">`:`<div style="height:220px;display:flex;align-items:center;justify-content:center;font-size:100px;background:linear-gradient(135deg,#FCE8D6,#E5F4EA)">${catOf(it.cat).e}</div>`;
+ openModal(`<div style="position:sticky;top:0;background:#fff;padding:10px 14px;display:flex;justify-content:space-between;border-bottom:1px solid var(--line)"><span style="font-size:16px">${catOf(it.cat).e} ${catOf(it.cat).n}</span><span style="cursor:pointer;font-size:20px" onclick="closeAll()">✕</span></div>
+  ${img}
+  <div class="cardp">
+    <h2 style="margin:0">${esc(it.t)}</h2>
+    <div class="muted">📍 ${esc(it.city)}, Côte d'Ivoire · ${timeago(it.time)} · 👁 ${it.views}</div>
+    <div style="font-size:26px;font-weight:900;color:var(--grn);margin:8px 0">${fmt(it.p)} FCFA <span class="chip on" style="font-size:10px;vertical-align:middle;cursor:default">${esc(it.cond)}</span></div>
+    ${it.size&&it.size!=='—'?`<span class="chip">📐 ${esc(it.size)}</span>`:''}
+    <div class="box"><b>Description</b><p class="muted" style="margin:5px 0;font-size:13px">${esc(it.d||"Vendeur de confiance. Inspectez l'article à la remise et payez à la réception — jamais d'avance.")}</p></div>
+    <div class="box" style="display:flex;gap:10px;align-items:center"><div class="av">🛍️</div><div class="grow"><b>${esc(it.seller)}</b><br><span class="muted">Vendeur ${esc(it.city)} · nota 4.8★</span></div><span class="badge">Vérifié</span></div>
+    ${mine?'<div class="info">C\'est ton article. Retrouve-le dans « Vendre ».</div>':
+      `<button class="btn g" onclick="contactOr('${it.id}')">💬 Contacter le vendeur</button>
+       <div class="info" style="text-align:center">🔒 Achat sécurisé Hametkro : validation mutuelle, commission ${Math.round(COMM_RATE*100)}%.</div>`}
+  </div>`);}
+function contactOr(id){if(!requireUser())return;startContact(id);}
+
+/* ============ SELL (requiert compte) ============ */
+function sellV(){
   let u=me();
-  if(t.length<3)return toast('Ajoute un titre clair.');
-  if(!p||p<=0)return toast('Indique un prix (FCFA).');
-  if(!u)return toast('Connecte-toi d\'abord.');
-  let catHid=document.getElementById(id+'_cat')?.value||'fashion';
-  items.unshift({id:iid(),cat:catHid,t,p,city:city,cond,size:'—',d,img,seller:u.name,sellerId:u.id,time:Date.now(),sold:false,country:'Côte d\'Ivoire',countryCode:'CI'});
-  saveItems();
-  closeSheet();toast('🎉 Annonce publiée dans le marché !');
-  current='home';catFilter='all';shell();
+  if(!u)return `<div class="center cardp" style="padding:50px 24px"><div style="font-size:60px">🛍️</div><h2>Vends tes articles</h2><p class="muted">Crée un compte gratuit pour publier tes annonces en 1 minute. Consulter reste libre.</p><button class="btn g" onclick="requireUser('sell')">Créer un compte pour vendre</button></div>`;
+  let mine=items.filter(i=>i.sellerId===u.id);
+  let onSale=mine.filter(i=>!i.sold).length;
+  let tabs=`<div class="hdr"><h2>Mes annonces</h2><span class="badge" style="margin-left:8px">${onSale} en vente</span></div>
+   <div class="statbox"><div class="st"><b>${mine.length}</b><span>publiées</span></div><div class="st"><b>${mine.filter(i=>i.sold).length}</b><span>vendues</span></div><div class="st"><b>${txs.filter(t=>t.sellerId===u.id).length}</b><span>transactions</span></div><div class="st"><b>${u.rating||5}★</b><span>note</span></div></div>
+   <div style="padding:0 12px"><button class="btn g" onclick="sellSheet()">➕ Publier un article</button></div>
+   <div style="padding:10px 12px">${mine.length?mine.map(tile).join(''):'<p class="muted center">Tu n\'as encore rien publié.</p>'}</div>`;
+  // transactions where I'm buyer or seller
+  let mytx=txs.filter(t=>t.buyerId===u.id||t.sellerId===u.id);
+  let txSec=`<div style="padding:6px 12px"><h3 style="margin:8px 0">Mes transactions sécurisées</h3>
+    ${mytx.length?mytx.map(txCard).join(''):'<p class="muted">Aucune transaction en cours. « Contacter un vendeur » puis acceptez le prix pour lancer une transaction sécurisée.</p>'}</div>`;
+  return tabs+txSec;
 }
+function sellSheet(){let u=me();if(!u)return requireUser('sell');
+ let pid='f'+Math.random().toString(36).slice(2,6);
+ openSheet(`<div style="padding:14px 0 4px"><div class="row" style="justify-content:space-between"><h2 style="margin:0">Publier un article</h2><span style="cursor:pointer;font-size:20px" onclick="closeAll()">✕</span></div><p class="muted">Marché Côte d'Ivoire 🇨🇮</p></div>
+  <label>Catégorie</label><div class="row" style="gap:6px;flex-wrap:wrap">${CATS.map(c=>`<span class="catpill ${c.id==='fashion'?'on':''}" data-cat="${c.id}" onclick="pickCat(this)">${c.e} ${c.n}</span>`).join('')}</div>
+  <input type="hidden" id="${pid}_cat" value="fashion">
+  <label>Photo</label><div id="${pid}_ph" onclick="pickImage('${pid}')" style="height:96px;border:2px dashed var(--org);border-radius:14px;display:flex;align-items:center;justify-content:center;color:var(--org);background:#FFF7EF;cursor:pointer;flex-direction:column;font-size:13px">📷<br>Ajouter</div>
+  <input type="hidden" id="${pid}_img">
+  <label>Titre *</label><input id="${pid}_t" class="input" placeholder="Ex : Robe wax taille M…">
+  <div class="row" style="align-items:flex-start"><div class="grow"><label>Prix (FCFA) *</label><input id="${pid}_p" class="input" type="number" placeholder="Ex : 15000"></div><div style="width:112px"><label>Ville</label><input id="${pid}_c" class="input" value="Abidjan"></div></div>
+  <label>État</label><div class="row" style="gap:6px;flex-wrap:wrap">${CONDS.map(c=>`<span class="catpill" data-c="${c}" onclick="pickCond(this)">${c}</span>`).join('')}</div><input type="hidden" id="${pid}_cond" value="Bon état">
+  <label>Description</label><textarea id="${pid}_d" class="input" rows="3" placeholder="État réel, défauts, année…"></textarea>
+  <div class="info">Tu encaisseras <b>${'100%'}</b> à la remise. Commission Hametkro ${Math.round(COMM_RATE*100)}% sur le prix final, à la validation.</div>
+  <button class="btn g" onclick="publish('${pid}')">Publier 🎉</button>`);}
+function pickCat(el){document.querySelectorAll('.catpill[data-cat]').forEach(x=>x.classList.remove('on'));el.classList.add('on');let h=el.closest('#sheet')?document.querySelector('#sheet input[type=hidden]'):null;if(h)h.value=el.dataset.cat}
+function pickCond(el){el.closest('.row').querySelectorAll('.catpill').forEach(x=>x.classList.remove('on'));el.classList.add('on');let sheet=el.closest('#sheet');let hs=sheet?sheet.querySelectorAll('input[type=hidden]'):[];if(hs.length)hs[hs.length-1].value=el.dataset.c}
+function pickImage(id){let inp=document.createElement('input');inp.type='file';inp.accept='image/*';
+ inp.onchange=e=>{let f=e.target.files[0];if(!f)return;let r=new FileReader();r.onload=()=>{let img=new Image();img.onload=()=>{let m=Math.min(1,520/Math.max(img.width,img.height)),cv=document.createElement('canvas');cv.width=img.width*m;cv.height=img.height*m;cv.getContext('2d').drawImage(img,0,0,cv.width,cv.height);let d=cv.toDataURL('image/jpeg',.78);document.getElementById(id+'_ph').innerHTML='<img src="'+d+'" style="width:100%;height:96px;object-fit:cover;border-radius:14px">';document.getElementById(id+'_img').value=d;};img.src=r.result;};r.readAsDataURL(f);};inp.click()}
+function publish(id){let u=me();let t=val(id+'_t').trim(),p=parseFloat(val(id+'_p')),img=document.getElementById(id+'_img').value,d=val(id+'_d');
+ if(t.length<3)return toast('Titre requis');if(!p||p<=0)return toast('Prix invalide');if(!u)return toast('Connecte-toi');
+ items.unshift({id:iid(),cat:document.getElementById(id+'_cat').value,t,p,city:val(id+'_c')||'Abidjan',cond:document.getElementById(id+'_cond').value,size:'—',d,img,seller:u.name,sellerId:u.id,time:Date.now(),sold:false,views:0});save(K_ITEMS,items);closeAll();toast('🎉 Publié !');view='mine';shell()}
+
+/* ============ CONTACT + TRANSACTION SÉCURISÉE ============ */
+function startContact(itemId){let u=me();let it=items.find(i=>i.id===itemId);if(!u||!it)return;
+ openSheet(`<div class="row" style="justify-content:space-between;padding:12px 0"><b>Contacter ${esc(it.seller)}</b><span style="cursor:pointer;font-size:20px" onclick="closeAll()">✕</span></div>
+  <div class="info">Vous allez lancer une <b>transaction sécurisée</b> : ni toi ni le vendeur n'êtes exposés aux arnaques.</div>
+  <label>Prix final convenu (FCFA) *</label><input id="ag_price" class="input" type="number" value="${it.p}">
+  <label>Mode de remise</label>
+  <div class="row" style="gap:8px;margin:8px 0">
+    <div class="card grow" style="cursor:pointer;padding:10px;text-align:center;border:2px solid var(--org)" id="mode_card" onclick="pickMode('hand')"><div style="font-size:26px">🤝</div><b>En main propre</b><div class="muted">Lieu public (marché, poste de police)</div></div>
+    <div class="card grow" style="cursor:pointer;padding:10px;text-align:center" id="mode_deliv" onclick="pickMode('delivery')"><div style="font-size:26px">📦</div><b>Livraison</b><div class="muted">Coursier / point relais</div></div>
+  </div>
+  <input type="hidden" id="ag_mode" value="hand">
+  <div id="meet_info" class="info">📍 Lieu recommandé : un lieu public sécurisé (poste de police, grande surface).</div>
+  <button class="btn g" onclick="createTx('${itemId}')">Demander la transaction sécurisée</button>`)}
+function pickMode(m){document.getElementById('mode_card').style.border='2px solid '+((m==='hand')?'var(--org)':'var(--line)');document.getElementById('mode_deliv').style.border='2px solid '+((m==='delivery')?'var(--org)':'var(--line)');document.getElementById('ag_mode').value=m;document.getElementById('meet_info').innerHTML=m==='hand'?'📍 Lieu recommandé : un lieu public sécurisé (poste de police, grande surface).':'📦 Le colis/point relais sécurise la remise. L\'acheteur confirme la réception avant déblocage.'}
+function createTx(itemId){let u=me();let it=items.find(i=>i.id===itemId);if(!u||!it)return;let p=parseFloat(val('ag_price'));if(!p||p<=0)return toast('Prix invalide');if(it.sellerId===u.id)return toast('C\'est ton article');
+ if(it.sellerId==='u_demo'){ // démo : seller simulé se met à disposition
+   txs.unshift({id:'tx'+Math.random().toString(36).slice(2,7),itemId,itemTitle:it.t,buyerId:u.id,buyerName:u.name,sellerId:it.sellerId,sellerName:it.seller,mode:document.getElementById('ag_mode').value,price:p,status:'agreed',created:Date.now(),validBuyer:false,validSeller:false,commission:Math.round(p*COMM_RATE),history:['Transaction sécurisée créée']});
+   save(K_TX,txs);closeAll();toast('✅ Transaction sécurisée lancée !');view='mine';shell();return;
+ }
+ // vrais users : enregistrer une "demande" côté vendeur (démo simplifiée)
+ txs.unshift({id:'tx'+Math.random().toString(36).slice(2,7),itemId,itemTitle:it.t,buyerId:u.id,buyerName:u.name,sellerId:it.sellerId,sellerName:it.seller,mode:document.getElementById('ag_mode').value,price:p,status:'agreed',created:Date.now(),validBuyer:false,validSeller:false,commission:Math.round(p*COMM_RATE),history:['Transaction sécurisée créée']});
+ save(K_TX,txs);closeAll();toast('✅ Transaction sécurisée lancée !');view='mine';shell();
+}
+function txCard(t){let u=me();let isBuyer=u&&t.buyerId===u.id;let isSeller=u&&t.sellerId===u.id;
+ let steps=[['agreed','Accord sur le prix','Vous êtes d\'accord sur '+fmt(t.price)+' FCFA'],['meet','Remise / réception',t.mode==='hand'?'Rencontre en lieu public et remise de l\'article':'Livraison du colis à '+esc(t.buyerName)],
+  ['buyer_ok','L\'acheteur valide la réception',isBuyer?'Toi : confirme que tu as bien reçu l\'article':'En attente de '+esc(t.buyerName)],
+  ['seller_ok','Le vendeur valide le paiement',isSeller?'Toi : confirme avoir reçu le paiement':'En attente de '+esc(t.sellerName)],
+  ['done','Transaction terminée','Commission '+esc(t.commission?fmt(t.commission):'0')+' FCFA (6%) tracée']];
+ let activeIdx=t.status==='agreed'?1:t.status==='done'?4:2;
+ let html='';steps.forEach((s,i)=>{let done=i<activeIdx,now=i===activeIdx;
+  html+=`<div class="step ${done?'done':now?'now':''}"><div class="dot">${done?'✓':now?'●':i+1}</div><div class="body"><b>${s[1]}</b><p>${s[2]}</p></div></div>`;});
+ let action='';
+ if(t.status==='agreed'&&isBuyer)action=`<button class="btn g" onclick="advance('${t.id}','meet')">J\'ai reçu l\'article ✅</button>`;
+ if(t.status==='agreed'&&isSeller)action=`<button class="btn g" onclick="advance('${t.id}','meet')">J\'ai remis l\'article / l\'ai expédié</button>`;
+ // simplification : validation mutualisée -> done
+ if(t.status==='meet'&&isBuyer)action=`<button class="btn g" onclick="complete('${t.id}','buyer')">Je confirme avoir reçu l'article</button>`;
+ if(t.status==='meet'&&isSeller)action=`<button class="btn g" onclick="complete('${t.id}','seller')">Je confirme le paiement reçu</button>`;
+ if(t.status==='done')action=`<div class="info">✅ Terminée — commission ${esc(t.commission?fmt(t.commission):'0')} FCFA pour Hametkro.</div>`;
+ return `<div class="box" style="border-left:4px solid var(--grn)"><div class="row"><b class="grow">${esc(t.itemTitle)}</b><span class="green big" style="font-size:16px">${fmt(t.price)} FCFA</span></div>
+   <div class="muted">${isBuyer?'Acheteur':'Vendeur'} · mode ${t.mode==='hand'?'🤝 main propre':'📦 livraison'}</div>${html}${action}</div>`;}
+function advance(id,st){let t=txs.find(x=>x.id===id);if(!t)return;t.status=st;t.history.push('Étape avancée');save(K_TX,txs);view='mine';shell()}
+function complete(id,who){let t=txs.find(x=>x.id===id);if(!t)return;if(who==='buyer')t.validBuyer=true;else t.validSeller=true;save(K_TX,txs);closeAll();
+ openModal(`<div class="cardp" style="text-align:center;padding:30px 20px"><div style="font-size:64px">${t.validBuyer&&t.validSeller?'🎉':'🔔'}</div><b style="font-size:17px">${t.validBuyer&&t.validSeller?'Transaction terminée avec succès !':'Validation enregistrée'}</b>
+  <p class="muted">${t.validBuyer&&t.validSeller?('Article « '+esc(t.itemTitle)+' » : vendeur et acheteur ont confirmé. Commission Hametkro '+esc(fmt(t.commission))+' FCFA (6%) tracée.'):'L\'autre partie doit aussi confirmer pour clôturer. En cas de litige, ouvre une réclamation dans le compte admin.'}</p>
+  ${t.validBuyer&&t.validSeller?'':`<button class="btn" onclick="dispute('${t.id}')">⚠️ Signaler un litige</button>`}
+  <button class="btn g" onclick="closeAll();view='mine';shell()">OK</button></div>`);
+ if(t.validBuyer&&t.validSeller){t.status='done';save(K_TX,txs)}}
+function dispute(id){let t=txs.find(x=>x.id===id);if(!t)return;t.status='dispute';t.history.push('Litige ouvert');save(K_TX,txs);closeAll();toast('Litige signalé à l\'admin');view='mine';shell()}
+
+/* ============ ACCOUNT / PROFILE ============ */
+function profileV(){let u=me();if(!u)return `<div class="center cardp" style="padding:60px 24px"><div style="font-size:60px">👤</div><h2>Espace membre</h2><p class="muted">Connecte-toi pour vendre, discuter et gérer tes transactions sécurisées.</p><button class="btn g" onclick="openAuth()">Créer un compte / Se connecter</button></div>`;
+ let mine=items.filter(i=>i.sellerId===u.id);
+ return `<div class="hdr"><h2>Mon compte</h2></div><div style="padding:4px 12px">
+  <div class="listItem"><div class="av">${esc(u.name[0])}</div><div class="grow"><b>${esc(u.name)}</b><br><span class="muted">${esc(u.email)}</span></div><span class="badge">Vérifié</span></div>
+  <div class="statbox"><div class="st"><b>${u.rating||5}★</b><span>note</span></div><div class="st"><b>${mine.filter(i=>i.sold).length}</b><span>ventes</span></div><div class="st"><b>${txs.filter(t=>t.sellerId===u.id).length}</b><span>en cours</span></div></div>
+  <div class="box"><b>📍 Marché</b><p class="muted">Côte d'Ivoire 🇨🇮 · ${esc(u.city)}</p></div>
+  <button class="btn ghost" onclick="logout()">Se déconnecter</button></div>`;}
+
+/* ============ ADMIN ============ */
+function adminV(){let u=me();if(!u||!isAdmin())return profileV();
+ let done=txs.filter(t=>t.status==='done');let totalComm=done.reduce((a,t)=>a+(t.commission||0),0);let disputes=txs.filter(t=>t.status==='dispute');
+ let lastM=Math.floor((Date.now()-30*864e5)/864e5);
+ return `<div class="hdr"><h2>Admin 📊</h2></div><div style="padding:4px 12px">
+  <div class="statbox"><div class="st"><b>${done.length}</b><span>ventes clôturées</span></div><div class="st"><b style="color:var(--grn)">${fmt(totalComm)}</b><span>FCFA commission</span></div><div class="st"><b>${disputes.length}</b><span>litiges</span></div></div>
+  <div class="info">Commission : ${Math.round(COMM_RATE*100)}% par vente validée. Revenus tracés transaction par transaction (prêt pour paiement Mobile Money).</div>
+  ${disputes.length?`<div class="warn"><b>⚠️ Litiges à arbitrer</b>${disputes.map(d=>`<div class="box" style="margin:6px 0"><b>${esc(d.itemTitle)}</b> · ${fmt(d.price)} FCFA<br><span class="muted">${esc(d.buyerName)} ↔ ${esc(d.sellerName)}</span><br><button class="btn sm g" onclick="resolve('${d.id}')">Clôturer (résolu)</button></div>`).join('')}</div>`:''}
+  <h3 style="margin:12px 0 4px">Historique des revenus</h3>
+  ${done.length?done.map(t=>`<div class="box" style="display:flex;justify-content:space-between;align-items:center"><div><b>${esc(t.itemTitle)}</b><div class="muted">${esc(t.buyerName)} → ${esc(t.sellerName)}</div></div><div style="text-align:right"><div class="green">+${fmt(t.commission)} FCFA</div><div class="muted">${timeago(t.created)}</div></div></div>`).join(''):'<p class="muted">Aucune vente clôturée pour l\'instant.</p>'}
+  </div>`;}
+function resolve(id){let t=txs.find(x=>x.id===id);if(t)t.status='done';save(K_TX,txs);view='admin';shell();toast('Litige clôturé ✅')}
+
 boot();
 </script>
 </body>
