@@ -1,5 +1,5 @@
 /* Hametkro PWA — service worker (network-first + fallback SPA anti-404). */
-const CACHE = 'hametkro-v17';
+const CACHE = 'hametkro-v18';
 // Chemins relatifs => résolus par rapport à ce script (/hametkro/).
 const CORE = ['./', './index.html', './manifest.json', './icon-192.png', './icon-512.png', './apple-icon-180.png'];
 const INDEX = './index.html';
@@ -45,6 +45,34 @@ self.addEventListener('fetch', (e) => {
         if (req.mode === 'navigate') return caches.match(INDEX);
         return Response.error();
       });
+    })
+  );
+});
+
+// ---- Web Push : affiche une notification même quand l'app est fermée ----
+self.addEventListener('push', (e) => {
+  let data = { title: 'Hametkro', body: '', tag: 'hk', icon: './icon-192.png' };
+  try { if (e.data) data = Object.assign(data, e.data.json()); } catch (_) {}
+  e.waitUntil(
+    self.registration.showNotification(data.title, {
+      body: data.body || '',
+      tag: data.tag || 'hk',
+      icon: data.icon || './icon-192.png',
+      badge: './icon-192.png',
+      data: { url: (data.data && data.data.url) || './' }
+    })
+  );
+});
+self.addEventListener('notificationclick', (e) => {
+  e.notification.close();
+  const url = (e.notification.data && e.notification.data.url) || './';
+  const full = new URL(url, location.origin).href;
+  e.waitUntil(
+    clients.matchAll({ type: 'window', includeUncontrolled: true }).then((list) => {
+      for (const c of list) {
+        if ('focus' in c && c.url === full) return c.focus();
+      }
+      return clients.openWindow(url);
     })
   );
 });

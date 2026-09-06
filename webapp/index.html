@@ -679,9 +679,29 @@ function notifWanted(){ return localStorage.getItem(notifKey())!=='0'; }
 function setNotifWanted(v){ localStorage.setItem(notifKey(), v?'1':'0'); }
 function notifGranted(){ return typeof Notification!=='undefined' && Notification.permission==='granted'; }
 function notifBtnState(){ return notifGranted()? '🔔 Activées':'🔕 Désactivées'; }
+const VAPID_PUBLIC='BKEkalXTkkfTHGQ17eCTvtnNWPDrlnGMncp7-PRQmbrDg-CXs6v1o27uhuI6Qg1RhzGPYnk92tyfO2KabAJrJo0';
+// Netlify Function : envoie une notification push même quand l'app est fermée.
+const PUSH_URL = location.origin + '/.netlify/functions/push';
+function notifyServerPush(toUid, title, body, tag){
+  if(!toUid || toUid === (curProfile && curProfile.uid)) return;
+  try{ fetch(PUSH_URL,{method:'POST',headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({to:toUid,title:title||'Hametkro',body:body||'',tag:tag||'hk',icon:'./icon-192.png'})}).catch(()=>{}); }
+  catch(e){} }
+function urlB64ToU8(s){ const pad='='.repeat((4-s.length%4)%4); const b=(s+pad).replace(/-/g,'+').replace(/_/g,'/'); const raw=atob(b); const out=new Uint8Array(raw.length); for(let i=0;i<raw.length;i++) out[i]=raw.charCodeAt(i); return out; }
+function abToUrlB64(buf){ let s=''; const u=new Uint8Array(buf); for(let i=0;i<u.length;i++) s+=String.fromCharCode(u[i]); return btoa(s).replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/,''); }
+function pushSubscribe(){ if(!curProfile||!('serviceWorker' in navigator)||!('PushManager' in window)||!notifGranted()) return;
+  navigator.serviceWorker.ready.then(reg=>{ if(!reg.pushManager) return;
+    reg.pushManager.subscribe({userVisibleOnly:true,applicationServerKey:urlB64ToU8(VAPID_PUBLIC)})
+      .then(sub=>{ const push={endpoint:sub.endpoint,expirationTime:sub.expirationTime||null,
+        keys:{p256dh:abToUrlB64(sub.getKey('p256dh')),auth:abToUrlB64(sub.getKey('auth'))}};
+        db.collection('users').doc(curProfile.uid).update({push}).catch(()=>{}); })
+      .catch(err=>{ console.warn('PUSH_SUB',err&&err.name); if(err&&err.name==='NotAllowedError') setNotifWanted(false); }); })
+    .catch(()=>{}); }
 function askPushPerm(){ if(typeof Notification==='undefined') return toast('Notifications non supportées ici');
-  if(Notification.permission==='granted'){ setNotifWanted(true); toast('🔔 Notifications activées'); shell(); return; }
-  Notification.requestPermission().then(p=>{ const ok=p==='granted'; setNotifWanted(ok); toast(ok?'🔔 Notifications activées':'Notifications désactivées'); shell(); }); }
+  const finish=(ok)=>{ setNotifWanted(ok); if(ok){ toast('🔔 Notifications activées'); pushSubscribe(); } else toast('Notifications désactivées'); shell(); };
+  if(Notification.permission==='granted'){ finish(true); return; }
+  if(Notification.permission==='denied'){ toast('Autorisation bloquée dans le navigateur'); return; }
+  Notification.requestPermission().then(p=> finish(p==='granted')); }
 function fireNotif(c){ if(!curProfile||!notifGranted()||!notifWanted()) return; if(document.hasFocus&&document.hasFocus()) return;
   if(!document.hidden&&!document.hasFocus()) { /* onglet visible mais pas focus: ok, notifier léger */ }
   const me=curProfile.uid; const msgs=(c&&c.msgs)||[]; const last=msgs[msgs.length-1]; if(!last||last.uid===me) return;
@@ -1273,6 +1293,8 @@ async function sendMsg(){ const inp=document.getElementById('msgText'); const tx
   _convRef.update({msgs:fv.arrayUnion(msg),lastAt:now,lastMsg:msg.text}).then(()=>{
     const i=_pendingMsgs.indexOf(msg); if(i>=0)_pendingMsgs.splice(i,1);
     convMarkSeen(_activeCid,_convData);
+    // Push serveur (même app fermée) : notifie le destinataire hors-ligne.
+    notifyServerPush(otherUid(_convData), '💬 '+(curProfile.name||''), (img?('📷 '+txt):txt).slice(0,120), 'hk_'+_activeCid);
   }).catch(e=>{ console.error('CHAT_SEND_ERR', e && e.code, e && e.message);
     const i=_pendingMsgs.indexOf(msg); if(i>=0)_pendingMsgs.splice(i,1);
     // Échec : on remet la zone d'envoi comme avant, le snapshot serveur rétablira l'état.
@@ -1461,6 +1483,35 @@ function adminV(){ if(!isAdmin())return profileV();
       </div>
       ${adminPanelWrap(`<b style="font-size:14px">Dernières conversations</b><span class="muted" style="font-size:10px">${convs.length} total</span>`,`${rows||'<p class="muted center">Aucune conversation</p>'}`)}`;
   }
+  else if(_admTab==='reports'){
+    const openRep = admReports.filter(r=>r.status!=='resolved'&&r.status!=='dismissed');
+    const repRows = admReports.length ? admReports.map(r=>{
+      const done = r.status==='resolved'||r.status==='dismissed';
+      const reason=esc(r.reason||'Autre');
+      const note=r.note?('<p class="muted" style="margin:4px 0;font-size:11.5px;background:var(--grn-soft);border-radius:9px;padding:6px 9px">« '+esc(r.note)+' »</p>'):'';
+      const itemTxt = r.itemId?(' · 📦 '+esc((allListings.find(l=>l.id===r.itemId)||{}).t||r.itemId)):'';
+      return `<div class="row" style="padding:10px 0;border-bottom:1px solid var(--line);align-items:flex-start">
+        <span style="font-size:20px;flex:none">🚩</span>
+        <div class="grow" style="min-width:0">
+          <div class="row"><b style="font-size:13px;flex:1">${esc(r.reporterName||'?')}</b>
+            <span style="font-size:10px;font-weight:800;padding:2px 8px;border-radius:7px;background:${done?'var(--line)':'var(--sang)'};color:${done?'var(--grey)':'#fff'};flex:none">${done?'TRAITÉ':'NOUVEAU'}</span></div>
+          <div class="muted" style="font-size:10.5px">signale → ${esc(r.otherName||'?')} · ${timeago(r.createdAt)}</div>
+          <div style="font-size:12.5px;font-weight:700;color:var(--sang);margin-top:3px">${reason}${itemTxt}</div>
+          ${note}
+          ${done?`<div class="muted" style="font-size:10px">Traité par ${esc(r.resolvedByName||'')} · ${timeago(r.resolvedAt)}</div>`:''}
+        </div>
+        <div style="flex:none;display:flex;gap:4px">
+          ${!done?`<button class="btn g sm" onclick="resolveReport('${r.id}','resolved')" title="Marquer traité">✓</button>`:''}
+          <button class="btn ghost sm" onclick="resolveReport('${r.id}','dismissed')" title="${done?'Rouvrir':'Ignorer / supprimer'}">${done?'↩':'✕'}</button>
+        </div></div>`; }).join('') : '<p class="muted center" style="padding:20px 0">Aucun signalement pour le moment 🎉</p>';
+    content=`
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+        ${kpi('🚩',admReports.length,'Signalements (total)','sang')}
+        ${kpi('🆕',openRep.length,'À traiter','org-soft')}
+      </div>
+      ${openRep.length?`<div class="warn" style="margin-top:10px"><b>${openRep.length} signalement(s) en attente de modération.</b> Vérifie la discussion signalée, prends la mesure adaptée (rappel, bannissement…), puis marque « traité ».</div>`:''}
+      ${adminPanelWrap(`<b style="font-size:14px">Signalements utilisateurs</b><span class="muted" style="font-size:10px">${admReports.length} total · créés par des membres, lus par l'admin</span>`,`${repRows}`)}`;
+  }
   else if(_admTab==='foodorders'){}
 
   return `<div style="background:linear-gradient(135deg,#0E7A44,#075231);color:#fff;padding:14px 14px 4px;border-radius:0 0 22px 22px">
@@ -1471,6 +1522,7 @@ function adminV(){ if(!isAdmin())return profileV();
       ${adminTab('transactions','💳','Ventes')}
       ${adminTab('resto','🍲','Repas')}
       ${adminTab('messages','💬','Messages')}
+      ${adminTab('reports','🚩','Signal.')}
     </div></div>
     <div style="padding:12px 12px 40px">${content}</div>`;
 }
@@ -1485,10 +1537,20 @@ function adminExport(kind){ let rows=[];
   a.download = (kind==='users'?'hametkro_comptes':'hametkro_transactions')+'.csv'; a.click();
   toast('⬇️ Export téléchargé'); }
 async function resolve(id){let ref=db.collection('transactions').doc(id);let d=await ref.get();let t=d.data();t.status='done';await ref.update({status:'done',updatedAt:Date.now()});view='admin';shell();toast('Litige clôturé ✅');}
+// Admin — traite / rouvre un signalement utilisateur (écritures admin sur `reports`).
+async function resolveReport(id, action){
+  const d=await db.collection('reports').doc(id).get(); if(!d.exists) return;
+  const isDone = d.data().status==='resolved'||d.data().status==='dismissed';
+  let up;
+  if(action==='resolved') up={status:'resolved',resolvedAt:Date.now(),resolvedBy:curProfile.uid,resolvedByName:curProfile.name};
+  else if(isDone) up={status:'open',resolvedAt:null,resolvedBy:null,resolvedByName:null};
+  else up={status:'dismissed',resolvedAt:Date.now(),resolvedBy:curProfile.uid,resolvedByName:curProfile.name};
+  try{ await db.collection('reports').doc(id).update(up); toast(action==='resolved'?'✅ Signalement marqué traité':isDone?'↩️ Signalement rouvert':'Signalement ignoré'); shell(); }
+  catch(e){ toast('❌ '+(e&&e.message||'erreur')); } }
 
 /* ============== ÉCOUTE DES DONNÉES (Firestore temps réel) ============== */
 let txCache=[], _deepDone=false;
-let admUsers=null, admTx=null, admConvs=[], admMenus=[], admOrders=[], _admLoaded=false, _admTab='overview', _admRoleF='all', _admQ='', _admTxF='all';
+let admUsers=null, admTx=null, admConvs=[], admMenus=[], admOrders=[], admReports=[], _admLoaded=false, _admTab='overview', _admRoleF='all', _admQ='', _admTxF='all';
 // Charge, pour l'admin, l'ensemble des comptes et transactions (vue globale).
 function listenAdmin(){
   auth.onAuthStateChanged(u=>{
@@ -1503,6 +1565,7 @@ function listenAdmin(){
         db.collection('conversations').onSnapshot(s=>{ admConvs=s.docs.map(d=>d.data()); if(!chatIsOpen()&&view==='admin')shell(); });
         db.collection('foodmenus').onSnapshot(s=>{ admMenus=s.docs.map(d=>{const x=d.data();x.id=d.id;return x;}); if(!chatIsOpen()&&view==='admin')shell(); });
         db.collection('foodorders').onSnapshot(s=>{ admOrders=s.docs.map(d=>d.data()); if(!chatIsOpen()&&view==='admin')shell(); });
+        db.collection('reports').orderBy('createdAt','desc').onSnapshot(s=>{ admReports=s.docs.map(d=>{const x=d.data();x.id=d.id;return x;}); if(!chatIsOpen()&&view==='admin')shell(); }, e=>{ console.warn('REPORTS_READ', e && e.code, e && e.message); });
       } else if(!isAd){ _admLoaded=false; }
     });
   });
@@ -1511,7 +1574,7 @@ function listenListings(){db.collection('listings').orderBy('time','desc').onSna
 function listenTx(){auth.onAuthStateChanged(u=>{ if(!u){txCache=[];notifsCache=[];notifUnread=0;return;}
   db.collection('transactions').where('participants','array-contains',u.uid).onSnapshot(snap=>{txCache=snap.docs.map(d=>d.data());buildNotifs(u.uid);if(!chatIsOpen()&&(view==='sell'||view==='admin'||view==='home'))boot();}); });}
 // Reconstruit aussi les notifs au chargement initial d'un utilisateur connecté.
-function afterAuthRebuild(u){ if(u) setTimeout(()=>buildNotifs(u.uid),400); }
+function afterAuthRebuild(u){ if(u){ setTimeout(()=>buildNotifs(u.uid),400); if(notifGranted()&&notifWanted()) setTimeout(pushSubscribe,1600); } }
 
 /* ============== REPAS DU JOUR · cantinières ==============
  * Nouveau mode « menu du jour » : des vendeuses (cantinières) publient chaque
