@@ -552,7 +552,7 @@ async function openChatFromListing(id){ if(!curProfile) return openAuth();
         itemId:id,itemTitle:l.t,msgs:[],lastAt:Date.now(),seen:{},createdAt:Date.now()});
     }
     await openConv(cid);
-  }catch(e){ toast('❌ Impossible d\'ouvrir la discussion'); }
+  }catch(e){ console.error('CHAT_OPEN_ERR', e && e.code, e && e.message); toast('❌ Impossible d\'ouvrir la discussion'); }
 }
 // Marque "lu" pour l'utilisateur courant (pas de mise à jour inutile).
 function convMarkSeen(cid,data){ if(!curProfile)return; const seen=(data&&data.seen)?data.seen:{}; seen[curProfile.uid]=Date.now();
@@ -602,7 +602,7 @@ async function sendMsg(){ const inp=document.getElementById('msgText'); const tx
     // cas d'envoi simultané par les deux interlocuteurs (bug corrigé).
     const fv=firebase.firestore.FieldValue;
     await _convRef.update({msgs:fv.arrayUnion(msg),lastAt:Date.now(),lastMsg:txt});
-  }catch(e){ toast('❌ Envoi impossible'); if(inp)inp.value=txt; }
+  }catch(e){ console.error('CHAT_OPEN_ERR', e && e.code, e && e.message); toast('❌ Envoi impossible'); if(inp)inp.value=txt; }
 }
 /* ============== TRANSACTION SÉCURISÉE ============== */
 function startContact(id){let l=allListings.find(x=>x.id===id);if(!l)return;
