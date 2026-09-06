@@ -1,5 +1,5 @@
 /* Hametkro PWA — service worker (network-first + fallback SPA anti-404). */
-const CACHE = 'hametkro-v12';
+const CACHE = 'hametkro-v13';
 // Chemins relatifs => résolus par rapport à ce script (/hametkro/).
 const CORE = ['./', './index.html', './manifest.json', './icon-192.png', './icon-512.png', './apple-icon-180.png'];
 const INDEX = './index.html';

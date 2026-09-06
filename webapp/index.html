@@ -791,6 +791,7 @@ function sellV(){if(!curProfile)return `<div class="center cardp" style="padding
  let buyTx=txCache.filter(t=>t.buyerId===curProfile.uid);let sellTx=txCache.filter(t=>t.sellerId===curProfile.uid);
  let tabs=`<div class="hdr"><h2>Mes annonces</h2><span class="badge" style="margin-left:8px">${onSale} en vente</span></div>
   <div class="statbox"><div class="st"><b>${mine.length}</b><span>publiées</span></div><div class="st"><b>${mine.filter(l=>l.sold).length}</b><span>vendues</span></div><div class="st"><b>${buyTx.length+sellTx.length}</b><span>transactions</span></div></div>
+  ${sellerActionChip()}
   <div style="padding:0 12px"><button class="btn g" onclick="sellSheet()">➕ Publier un article</button></div>
   <div style="padding:10px 12px">${mine.length?mine.map(tile).join(''):'<p class="muted center">Aucune annonce publiée.</p>'}</div>
   <div style="padding:6px 12px"><h3 style="margin:8px 0">Transactions sécurisées</h3>${txCache.filter(t=>t.buyerId===curProfile.uid||t.sellerId===curProfile.uid).length?txCache.filter(t=>t.buyerId===curProfile.uid||t.sellerId===curProfile.uid).map(txCard).join(''):'<p class="muted">Contacte un vendeur pour lancer une transaction sécurisée.</p>'}</div>`;
@@ -856,6 +857,7 @@ function messagesV(){ if(!curProfile) return `<div class="hdr"><h2>Messages</h2>
   if(!convCache.length) return `<div class="hdr"><h2>Messages</h2></div><div class="center cardp" style="padding:60px 24px"><div style="font-size:56px">💬</div><h2>Aucune discussion</h2><p class="muted">Ouvre une annonce et clique « Discuter » avec le vendeur.</p><button class="btn g" onclick="view='home';shell()">Parcourir les annonces</button></div>`;
   const sorted=convCache.slice().sort((a,b)=>(b.lastAt||0)-(a.lastAt||0));
   return `<div class="hdr"><h2>Messages</h2>${msgUnread?`<span class="badge" style="background:var(--sang);margin-left:8px">${msgUnread} non-lus</span>`:''}</div>
+   ${needsReplyHtml()}
    <div style="padding:4px 12px 40px">${sorted.map(c=>{const o=otherName(c);const u=unreadOf(c);
      const last=(c.msgs&&c.msgs.length)?c.msgs[c.msgs.length-1]:null;
      return `<div class="chatItem" onclick="openConv('${c.id}')">
@@ -1284,7 +1286,9 @@ function foodMenuCard(m){
     : open ? `<button class="btn g sm" onclick="curProfile?orderSheet('${m.id}'):openAuth()">🛒 Commander</button>`
     : `<span class="muted">🔴 Commandes closes pour aujourd'hui</span>`;
   return `<div class="box" style="border-left:4px solid var(--org)">
-    <div class="row"><b class="grow">${esc(m.sellerName)}</b><span class="chip on" style="font-size:9px;cursor:default">${open?'🟢 commandes ouvertes':'🔴 fermé'}</span></div>
+    <div class="row"><b class="grow">${esc(m.sellerName)}${foodIsFav(m.sellerId)?' <span class="badge" style="background:var(--gold)">⭐ Favori</span>':''}</b>
+      <span style="cursor:pointer;font-size:18px" title="Ajouter à mes cantinières favorites" onclick="toggleFoodFav('${m.sellerId}')">${foodIsFav(m.sellerId)?'⭐':'☆'}</span>
+      <span class="chip on" style="font-size:9px;cursor:default">${open?'🟢 commandes ouvertes':'🔴 fermé'}</span></div>
     <div class="muted">📦 ${esc(m.zone||'')} · 🛵 ${minHm(m.winS)}–${minHm(m.winE)} · commande avant ${minHm(m.cutoff)}</div>
     ${(m.items||[]).map(it=>`<div class="row" style="justify-content:space-between;padding:3px 0"><span>• ${esc(it.name)}</span><b>${fmtFCFA(it.price)} FCFA</b></div>`).join('')}
     <div style="margin-top:8px">${btn}</div></div>`;
@@ -1326,6 +1330,7 @@ function orderCard(o){ const mine=curProfile&&o.sellerId===curProfile.uid;
   return `<div class="box"><div class="row"><b class="grow">${roleTxt}</b><span class="muted">${timeago(o.time)}</span></div>
    ${(o.items||[]).map(x=>`<div class="row" style="justify-content:space-between"><span>${x.qty}× ${esc(x.name)}</span><b>${fmtFCFA(x.price*x.qty)} FCFA</b></div>`).join('')}
    <div class="muted" style="margin-top:2px">Total <b>${fmtFCFA(o.total)} FCFA</b>${o.place?(' · 📍 '+esc(o.place)):''}${o.note?(' · 💬 '+esc(o.note)):''}</div>
+   ${!mine?reorderBtn(o):''}
    <div style="margin-top:8px;display:flex;align-items:center;justify-content:space-between;gap:8px"><span>${stMap[o.status]||esc(o.status)}</span>${act}</div></div>`; }
 async function orderAct(id,status){ const d=await db.collection('foodorders').doc(id).get(); if(!d.exists)return;
   await d.ref.update({status,updatedAt:Date.now()});
@@ -1366,9 +1371,12 @@ async function orderDeliverPoint(i){
 
 // --- Vue Resto (route) ---
 function foodBrowse(){
-  const list=foodToday.filter(m=>m.sellerId!==(curProfile&&curProfile.uid));
+  let list=foodToday.filter(m=>m.sellerId!==(curProfile&&curProfile.uid));
   if(!list.length) return `<div class="center cardp muted" style="padding:26px;margin:4px 12px">Aucune cantinière n'a publié de menu aujourd'hui. Reviens en matinée !</div>`;
-  return `<div style="padding:0 12px 10px">${list.map(foodMenuCard).join('')}</div>`;
+  list=list.slice().sort((a,b)=>(foodIsFav(b.sellerId)?1:0)-(foodIsFav(a.sellerId)?1:0));
+  const favs=foodFavs().length;
+  const top = favs? `<div class="pill-cta" style="margin:2px 14px 6px">⭐ Tes cantinières favorites (${favs}) sont en tête de liste.</div>`:'';
+  return top+`<div style="padding:0 12px 10px">${list.map(foodMenuCard).join('')}</div>`;
 }
 function restoV(){
   let hero=`<div class="hero" style="background:radial-gradient(120% 160% at 15% -10%,#1C9E63,#0E7A44 46%,#075231);border-radius:0"><h1>🍽️ Repas du jour</h1><p>Les cantinières publient leur menu chaque matin. Commande avant l'heure limite et récupère ton plat à la pause. <b>Paiement à la livraison.</b></p></div>`;
@@ -1398,6 +1406,60 @@ function foodManageHTML(){
     : `<p class="muted">Aucune commande reçue aujourd'hui pour l'instant. Les commandes d'un même point seront regroupées ici.</p>`;
   return `<div style="padding:0 12px"><h2 style="margin:10px 2px 2px">Ma cantinière</h2>${panel}${menuBlock}${incoming}</div>`;
 }
+
+/* ============== PAQUET C : RÉTENTION & PASSAGE À L'ACTION ============== */
+// --- Favori cantinière (⭐) : mémorisé par appareil/uid pour épingler sa cantinière ---
+function foodFavKey(){ return 'ham_foodfav_'+(curProfile?curProfile.uid:'anon'); }
+function foodFavs(){ try{ return JSON.parse(localStorage.getItem(foodFavKey())||'[]'); }catch(e){ return []; } }
+function foodIsFav(sid){ return foodFavs().includes(sid); }
+function toggleFoodFav(sid){ if(!curProfile) return openAuth();
+  let arr=foodFavs(); const i=arr.indexOf(sid); if(i>=0)arr.splice(i,1); else arr.push(sid);
+  localStorage.setItem(foodFavKey(),JSON.stringify(arr)); toast(foodIsFav(sid)?'⭐ Cantinière favorite enregistrée':'Retiré des favoris'); shell(); }
+// "Recommander les mêmes plats" : re-commande un plat déjà pris aujourd'hui chez la même cantinière.
+function canReorder(o){ if(!o) return false; const m=foodToday.find(x=>x.sellerId===o.sellerId); if(!m||!menuOpen(m)) return false;
+  const names=(o.items||[]).map(x=>x.name);
+  return names.length>0 && names.every(n=>m.items.some(it=>it.name===n)); }
+async function recommendOrder(id){ const o=(myOrders||[]).find(x=>x.id===id); if(!o)return toast('Commande introuvable');
+  const m=foodToday.find(x=>x.sellerId===o.sellerId); if(!m)return toast('Menu indisponible pour l\'instant');
+  const items=(o.items||[]).map(x=>({name:x.name,price:x.price,qty:x.qty})).filter(x=>x.qty>0);
+  if(!items.length) return toast('Rien à recommander');
+  const total=items.reduce((a,x)=>a+x.price*x.qty,0); const now=Date.now();
+  try{
+    const doc=db.collection('foodorders').doc();
+    await doc.set({id:doc.id,menuId:m.id,date:m.date,sellerId:m.sellerId,sellerName:m.sellerName,
+      buyerId:curProfile.uid,buyerName:curProfile.name,items,total,place:o.place||'',note:o.note||'',
+      status:'placed',winS:m.winS,winE:m.winE,time:now,updatedAt:now,reorderedFrom:o.id});
+    closeAll(); toast('✅ Recommandée ! Paie à la livraison.'); view='resto'; shell();
+  }catch(e){ console.error('FOOD_REORDER',e&&e.code,e&&e.message); toast('❌ '+(e&&e.message||'erreur')); } }
+function reorderBtn(o){ if(!o) return ''; if(o.sellerId===(curProfile&&curProfile.uid)) return ''; // pas pour la cantinière
+  if(!canReorder(o)) return '';
+  return `<button class="btn ghost sm" style="margin-top:6px" onclick="recommendOrder('${o.id}')">🔄 Recommander les mêmes plats</button>`; }
+// --- Messages : signaler les conversations qui attendent ta réponse / sans réponse ---
+function lastMsg(c){ return (c&&c.msgs&&c.msgs.length)?c.msgs[c.msgs.length-1]:null; }
+function awaitingMine(c){ const l=lastMsg(c); return curProfile&&l&&l.uid===curProfile.uid; }
+function awaitingLabel(c){ const l=lastMsg(c); if(!curProfile||!l) return '';
+  if(l.uid===curProfile.uid){ const age=Date.now()-l.time;
+    if(age>2*3600*1000) return `<span style="font-size:10px;color:var(--org);font-weight:700">🕓 En attente de réponse · ${timeago(l.time)}</span>`;
+    return `<span class="muted" style="font-size:10px">Vous · il y a ${timeago(l.time)}</span>`; }
+  return `<span class="muted" style="font-size:10px">${esc(l.name||'')} · ${timeago(l.time)}</span>`; }
+function pendingConvs(){ if(!curProfile) return []; return convCache.filter(c=>{ const l=lastMsg(c); return l&&l.uid===curProfile.uid && (Date.now()-l.time)>2*3600*1000; }); }
+function needsReplyHtml(){ const pend=pendingConvs(); if(!pend.length) return '';
+  const rows=pend.slice(0,4).map(c=>{ const o=otherName(c); return `<div class="listItem" style="padding:10px" onclick="openConv('${c.id}')"><div class="av" style="width:38px;height:38px;font-size:18px">⏰</div><div class="grow"><b style="font-size:13px">${esc(o?o.name:'?')}</b><div class="muted" style="font-size:11px">« ${esc(c.itemTitle||'')} » · pas de réponse depuis ${timeago(c.lastAt)}</div></div><span class="muted">→</span></div>`; }).join('');
+  return `<div style="background:var(--org-soft);border:1px solid #FBDDBE;border-radius:14px;padding:10px 12px;margin:8px 12px">
+    <b style="font-size:13px">🔔 À relancer (${pend.length})</b>
+    <p class="muted" style="margin:2px 0 6px;font-size:11px">Tes derniers messages n'ont pas encore de réponse.</p>${rows}</div>`; }
+function openReminder(cid){ openConv(cid); }
+// --- Vendeur : demandes en attente + revenus (bloc "à faire") dans Vendre ---
+function sellerActionChip(){ if(!curProfile) return '';
+  const mine=txCache.filter(t=>t.sellerId===curProfile.uid);
+  const toConfirm=mine.filter(t=>t.status!=='done'&&t.status!=='dispute'&&(!t.validSeller||!t.validBuyer)).length;
+  const requests=mine.filter(t=>t.status==='agreed'&&!t.validBuyer).length;
+  const rev=mine.filter(t=>t.status==='done').reduce((a,t)=>a+(t.price||0),0);
+  let parts=[];
+  if(toConfirm) parts.push(`<span style="font-size:10px;color:var(--org);font-weight:800">🔔 ${toConfirm} validation(s) en attente</span>`);
+  if(requests) parts.push(`<span style="font-size:10px;color:var(--grn);font-weight:700">🛒 ${requests} demande(s) d'achat</span>`);
+  if(rev>0) parts.push(`<span style="font-size:10px;font-weight:700">💰 ${fmt(rev)} FCFA vendus (clôturées)</span>`);
+  return parts.length?`<div style="padding:4px 12px"><div class="box" style="background:var(--grn-soft);border-left:4px solid var(--grn);padding:10px 12px"><b style="font-size:13px">📊 Ton activité</b>${parts.map(p=>'<div style="margin-top:3px">'+p+'</div>').join('')}<button class="btn g sm" style="margin-top:8px" onclick="view='msg';shell()">Voir mes messages</button></div></div>`:''; }
 
 /* ============== INSTALLATION PWA ============== */
 let deferredPrompt=null;
