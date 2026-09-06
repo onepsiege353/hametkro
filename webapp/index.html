@@ -338,6 +338,7 @@ function fb(){
       // Cas inscription : le doc peut être écrit juste APRÈS ce premier read.
       if(!curProfile){ await new Promise(r=>setTimeout(r,700)); try{const d=await db.collection('users').doc(u.uid).get(); curProfile=d.exists?d.data():null;}catch(e){} }
       afterAuthRebuild(u); startPresence();
+      setTimeout(maybeOnboard, 1300); // onboarding robuste, une fois le profil chargé
     } else { curProfile=null; notifsCache=[]; notifUnread=0; stopPresence(); }
     boot();
   });
@@ -361,6 +362,10 @@ function isAdmin(){return curProfile&&curProfile.role==='admin'}
 
 /* ============== ROUTAGE ============== */
 let view='home', catF='all', q='', allListings=[];
+// Favoris / ville / alertes de recherche (Paquet A)
+let cityF='all', myFavs=new Set(), favReady=false, myAlerts=[];
+function hasFav(id){ return myFavs.has(id); }
+function citiesOf(){ const s=new Set(); (allListings||[]).forEach(l=>{ if(l.city) s.add(l.city); }); return [...s].sort(); }
 function boot(){ shell(); }
 function shell(){
   // Si un fil de discussion est affiché en plein écran, on ne ré-affiche pas
@@ -392,7 +397,8 @@ function shell(){
 
 /* ============== HOME (lecture publique) ============== */
 function homeV(){
-  let list=allListings.filter(l=>!l.sold&&(catF==='all'||l.cat===catF)&&(!q||(l.t||'').toLowerCase().includes(q)||(l.city||'').toLowerCase().includes(q)));
+  const rc=resolvedCity();
+  let list=allListings.filter(l=>!l.sold&&(catF==='all'||l.cat===catF)&&(!q||(l.t||'').toLowerCase().includes(q)||(l.city||'').toLowerCase().includes(q))&&(rc==='all'||(l.city||'')===rc));
   let firstName = curProfile ? (curProfile.name||'Compte').split(' ')[0] : '';
   const mCount=allListings.filter(l=>!l.sold).length;
   let hero = curProfile
@@ -427,15 +433,16 @@ function homeV(){
     }
   }
   let title = catF!=='all' ? `<div class="sectionTitle"><h3>${catOf(catF).e} ${catOf(catF).n}</h3><a onclick="setCat('all')">Tout voir</a></div>` : `<div class="sectionTitle"><h3>Annonces récentes</h3></div>`;
-  let cards=list.length?`<div class="grid">${list.map(tile).join('')}</div>`:`<div class="center cardp muted">Aucun article pour le moment.</div>`;
-  return hero+featured+catSection+searchChips+title+cards;
+  let cards=list.length?`<div class="grid">${list.map(tile).join('')}</div>`:`<div class="center cardp muted">Aucun article pour le moment${cityF!=='all'?` dans cette ville (${esc(resolvedCity())})`:''}.</div>`;
+  return hero+actRow()+cityBar()+featured+catSection+searchChips+title+cards;
 }
 function setCat(id){catF=id;shell();}
 function firstImg(l){return (l.photos&&l.photos.length)?l.photos[0]:(l.img||'');}
 function tile(l){let im=firstImg(l);
   return `<div class="card tile" onclick="detail('${l.id}')">
   <div class="img">${im?`<img src="${esc(im)}" style="width:100%;height:100%;object-fit:cover">`:`<span class="e">${catOf(l.cat).e}</span>`}
-    ${(l.photos&&l.photos.length>1)?`<span style="position:absolute;right:8px;top:8px;background:rgba(0,0,0,.5);color:#fff;font-size:9px;padding:2px 6px;border-radius:6px">🖼 ${l.photos.length}</span>`:''}
+    ${favHeart(l)}
+    ${(l.photos&&l.photos.length>1)?`<span style="position:absolute;right:44px;top:8px;background:rgba(0,0,0,.5);color:#fff;font-size:9px;padding:2px 6px;border-radius:6px">🖼 ${l.photos.length}</span>`:''}
     <span class="new">${(Date.now()-(l.time||0))<3*864e5?'NOUVEAU':''}</span></div>
   <div class="bd"><h4>${esc(l.t)}</h4><div class="pr">${fmt(l.p)} FCFA</div>
     <div class="me"><span>📍 ${esc(l.city||'')}</span><span>${timeago(l.time)}</span></div></div></div>`;}
@@ -455,6 +462,116 @@ function galleryHtml(l,id){
   </div><div class="dots">${dots}</div>`;
 }
 function galleryGo(id,dir){galIndex[id]=((galIndex[id]||0)+dir+100)%100;detail(id);}
+
+/* ============== PAQUET A : FAVORIS · VILLE · ALERTES DE RECHERCHE · ONBOARDING ============== */
+function favStop(e){ if(e){ e.stopPropagation(); e.preventDefault(); } }
+function favHeart(l){ const on=hasFav(l.id);
+  const inner=`<span style="font-size:17px;line-height:1">${on?'❤️':'🤍'}</span>`;
+  const box=`<span title="${on?'Retirer des favoris':'Ajouter aux favoris'}" onclick="${curProfile?`event.stopPropagation();event.preventDefault();toggleFav('${l.id}')`:'event.stopPropagation();event.preventDefault();favCta()'}" style="position:absolute;right:8px;top:8px;width:32px;height:32px;border-radius:50%;background:${on?'rgba(255,255,255,.95)':'rgba(0,0,0,.38)'};backdrop-filter:blur(3px);display:flex;align-items:center;justify-content:center;cursor:pointer;z-index:3;box-shadow:0 2px 8px rgba(0,0,0,.18)">${inner}</span>`;
+  return box; }
+function favCta(){ openAuth(); }
+async function toggleFav(id,inDetail){ if(!curProfile) return favCta();
+  const on=hasFav(id); const uid=curProfile.uid;
+  const ref=db.collection('favorites').doc(uid);
+  const fv=firebase.firestore.FieldValue;
+  const redraw=()=>{ if(inDetail){ detail(id); } else { shell(); } };
+  try{
+    if(on){ myFavs.delete(id); await ref.set({uid,favs:fv.arrayRemove(id),updatedAt:Date.now()},{merge:true}); }
+    else { myFavs.add(id); await ref.set({uid,favs:fv.arrayUnion(id),updatedAt:Date.now()},{merge:true}); }
+    toast(on?'Retiré des favoris':'❤️ Ajouté à ta liste'); redraw();
+  }catch(e){ console.error('FAV',e&&e.code,e&&e.message); if(on)myFavs.add(id); else myFavs.delete(id); toast('❌ '+(e&&e.message||'erreur')); }
+}
+function listenFavs(){ auth.onAuthStateChanged(u=>{ if(favUnsub)favUnsub(); favUnsub=null; myFavs=new Set();
+  if(!u) return;
+  favUnsub=db.collection('favorites').doc(u.uid).onSnapshot(s=>{ const d=s.exists?s.data():null;
+    myFavs=new Set((d&&d.favs)||[]); if(!chatIsOpen()&&(view==='home'||view==='me'||view==='sell'))shell(); }); }); }
+let favUnsub=null;
+// --- Localisation : filtre par ville / « ma ville » ---
+function resolvedCity(){ return cityF==='mine'?(curProfile&&curProfile.city)||'all':cityF; }
+function setCity(c){ cityF=c; shell(); }
+function cityBar(){ const cs=citiesOf(); if(cs.length===0) return '';
+  const mine=curProfile?curProfile.city:''; let chips='';
+  chips+=`<div class="chip ${cityF==='all'?'on':''}" onclick="setCity('all')">🌍 Partout</div>`;
+  if(mine) chips+=`<div class="chip ${cityF==='mine'?'on':''}" onclick="setCity('mine')">📍 Ma ville (${esc(mine)})</div>`;
+  chips+=cs.filter(c=>c!==mine).map(c=>`<div class="chip ${cityF===c?'on':''}" onclick="setCity('${esc(c)}')">${esc(c)}</div>`).join('');
+  return `<div style="display:flex;align-items:center;gap:8px;padding:2px 14px 0;overflow-x:auto"><span style="font-size:9px;font-weight:800;color:var(--grey2);letter-spacing:.3px;flex:none">VILLE</span><div class="chips" style="padding:6px 0;flex:1">${chips}</div></div>`; }
+// --- Alertes / sauvegardes de recherche ---
+function listenAlerts(){ auth.onAuthStateChanged(u=>{ if(alertUnsub)alertUnsub(); alertUnsub=null; myAlerts=[];
+  if(!u) return;
+  alertUnsub=db.collection('alerts').where('uid','==',u.uid).onSnapshot(s=>{ myAlerts=s.docs.map(d=>{const x=d.data();x.id=d.id;return x;}); if(!chatIsOpen()&&(view==='me'||view==='home'))shell(); }); }); }
+let alertUnsub=null;
+function alertFilter(a){ const rc=a.city==='mine'?'all':(a.city||'all'); const q=(a.q||'').toLowerCase();
+  return (allListings||[]).filter(l=>!l.sold
+    && (a.cat==='all'||l.cat===a.cat)
+    && (!rc||rc==='all'||(l.city||'')===rc)
+    && (!q||(l.t||'').toLowerCase().includes(q)||(l.city||'').toLowerCase().includes(q))); }
+function alertNew(a){ const s=a.seenAt||a.created||0; return alertFilter(a).filter(l=>(l.time||0)>s).length; }
+function saveSearchSheet(){ if(!curProfile)return openAuth();
+  const resCity=resolvedCity(); const rcLab = resCity==='mine'?null:(resCity==='all'?'Partout':resCity);
+  openSheet(`<div class="row" style="justify-content:space-between;padding:12px 0"><b>🔔 Alerte nouveautés</b><span style="cursor:pointer;font-size:20px" onclick="closeAll()">✕</span></div>
+   <div class="box">${catF==='all'?'Toutes les catégories':catOf(catF).n}${q?(' · « '+esc(q)+' »'):''}${cityF!=='all'?(cityF==='mine'?(' · Ma ville ('+esc(curProfile.city)+')'):' · '+esc(cityF)):''}</div>
+   <label>Nom de l'alerte</label><input id="as_name" class="input" placeholder="Ex : iPhone pas cher à Cocody" value="${esc((catF!=='all'?catOf(catF).n:'')+(q?' '+q:''))}">
+   <div class="info">💡 Tu seras prévenu·e quand une nouvelle annonce correspond à ces critères.</div>
+   <button class="btn g" onclick="doSaveSearch()">Activer cette alerte</button>`); }
+async function doSaveSearch(){ const name=(val('as_name')||'').trim()||'Ma recherche';
+  const resCity=resolvedCity();
+  try{ const doc=db.collection('alerts').doc(); const now=Date.now();
+    await doc.set({id:doc.id,uid:curProfile.uid,name,cat:catF,city:resCity,q,created:now,seenAt:now});
+    closeAll(); toast('🔔 Alerte activée'); view='me';shell(); }
+  catch(e){ console.error('ALERT_SAVE',e&&e.code,e&&e.message); toast('❌ '+(e&&e.message||'erreur')); } }
+function runAlert(id){ const a=myAlerts.find(x=>x.id===id); if(!a)return;
+  catF=a.cat; q=a.q||''; if(a.city&&a.city!=='mine')cityF=a.city; else if(a.city==='mine')cityF='mine';
+  view='home';shell();
+  db.collection('alerts').doc(id).update({seenAt:Date.now()}).catch(()=>{}); toast('🛒 Résultats actualisés'); }
+async function delAlert(id){ try{ await db.collection('alerts').doc(id).delete(); toast('Alerte supprimée'); shell(); }catch(e){ toast('❌ '+e.message); } }
+function alertsHtml(){ if(!myAlerts.length) return '<p class="muted" style="text-align:center;padding:8px 0">Aucune alerte. Depuis l\'accueil, filtre puis « 🔔 Activer une alerte ».</p>';
+  return myAlerts.slice().sort((a,b)=>(b.created||0)-(a.created||0)).map(a=>{ const n=alertNew(a);
+    return `<div class="box"><div class="row"><div class="grow"><b>🔔 ${esc(a.name)}</b>${n?` <span class="badge" style="background:var(--sang)">${n} nouveau${n>1?'x':''}</span>`:''}<div class="muted" style="font-size:11px">${a.cat==='all'?'Toutes catégories':catOf(a.cat).n}${a.q?(' · '+esc(a.q)):''}${a.city&&a.city!=='mine'&&a.city!=='all'?(' · '+esc(a.city)):''}</div></div><div class="row" style="flex:none"><button class="btn g sm" onclick="runAlert('${a.id}')">Voir</button><button class="btn ghost sm" onclick="delAlert('${a.id}')">✕</button></div></div></div>`;
+  }).join(''); }
+function favListHtml(){ const mine=myFavs; const items=allListings.filter(l=>mine.has(l.id));
+  if(!items.length) return '<p class="muted" style="text-align:center;padding:12px 0">Ta liste est vide. Touche le ❤️ sur une annonce pour la garder ici.</p>';
+  return `<div style="margin-top:4px">${items.map(tile).join('')}</div>`; }
+function favSheet(){ openSheet(`<div class="row" style="justify-content:space-between;padding:12px 0"><b>❤️ Ma liste (${myFavs.size})</b><span style="cursor:pointer;font-size:20px" onclick="closeAll()">✕</span></div>${favListHtml()}`); }
+function newAlertsTotal(){ return myAlerts.reduce((s,a)=>s+alertNew(a),0); }
+function actRow(){
+  if(!curProfile) return '';
+  const alertTotal=newAlertsTotal();
+  const canSave = (catF!=='all'||q||cityF!=='all');
+  return `<div style="display:flex;gap:8px;align-items:center;padding:8px 14px 0;overflow-x:auto">
+    <div class="chip" style="flex:none;background:${myFavs.size?'#fff7ea':''}" onclick="favSheet()">❤️ Ma liste${myFavs.size?` <b style="color:var(--org)">(${myFavs.size})</b>`:''}</div>
+    ${myAlerts.length?`<div class="chip" style="flex:none" onclick="view='me';shell()">🔔 ${myAlerts.length} alerte${myAlerts.length>1?'s':''}${alertTotal?` <b style="color:var(--sang)">· ${alertTotal} nouveau${alertTotal>1?'x':''}</b>`:''}</div>`:''}
+    ${canSave?`<div class="chip" style="flex:none;background:var(--grn-soft);color:var(--grn-d);font-weight:800" onclick="saveSearchSheet()">🔔 Activer une alerte</div>`:''}
+  </div>`; }
+/* --- Onboarding post-inscription (fluide, 1 seule fois) --- */
+function maybeOnboard(){ if(!curProfile) return;
+  if(curProfile.onboarded) return;
+  const isNew = !sessionStorage.getItem('ham_onboard_seen_'+curProfile.uid);
+  if(!isNew) return; sessionStorage.setItem('ham_onboard_seen_'+curProfile.uid,'1');
+  setTimeout(()=>openOnboard(), 900); }
+function openOnboard(){ openModal(`<div>
+  <div class="authHero" style="padding:26px 22px 20px;border-radius:0 0 26px 26px"><div class="markWrap">${logoMark(64)}</div>
+    <h1 style="font-size:22px;margin-top:8px">Bienvenue ${esc((curProfile.name||'').split(' ')[0])} 🎉</h1>
+    <p>2 petites choses pour profiter pleinement du marché.</p></div>
+  <div style="padding:18px 20px 30px">
+    <div class="perk"><div class="pe">📱</div><div class="grow"><b>Sois joignable</b><span>Ajoute ton WhatsApp pour que les acheteurs te contactent direct et pour tes commandes repas.</span></div></div>
+    <label>Numéro WhatsApp / téléphone (avec +225)</label>
+    <input id="ob_wa" class="input" value="${esc(curProfile.wa||'')}" placeholder="Ex : +225 07 00 00 00 00" inputmode="tel">
+    <label>Ton quartier / commune</label>
+    <input id="ob_city" class="input" value="${esc(curProfile.city||'')}" placeholder="Ex : Cocody, Riviera…">
+    <div style="height:8px"></div>
+    <button class="btn g" onclick="onboardSave()">C'est bon, me voilà prêt·e ✓</button>
+    <button class="btn ghost" style="margin-top:8px" onclick="onboardSkip()">Passer pour l'instant</button>
+  </div></div>`); }
+async function onboardSave(){ const wa=document.getElementById('ob_wa').value.replace(/[^0-9+ ]/g,'').trim();
+  const city=document.getElementById('ob_city').value.trim();
+  const up={onboarded:true}; if(wa&&wa.replace(/[^0-9]/g,'').length>=7)up.wa=wa; if(city)up.city=city;
+  try{ await db.collection('users').doc(curProfile.uid).update(up); curProfile={...curProfile,...up};
+    closeAll(); toast('👏 Bienvenue dans le marché !'); view='home';shell(); }
+  catch(e){ closeAll(); view='home';shell(); } }
+function onboardSkip(){ closeAll(); db.collection('users').doc(curProfile.uid).update({onboarded:true}).catch(()=>{}); curProfile={...curProfile,onboarded:true}; view='home';shell(); }
+// « Vérifié » : profil complété (WhatsApp/téléphone) — badge de confiance.
+function verifiedBadge(p){ const ok=p&&((p.wa&&String(p.wa).replace(/[^0-9]/g,'').length>=7)||(p.phone&&String(p.phone).replace(/[^0-9]/g,'').length>=7));
+  return ok?'<span class="badge" style="background:var(--grn)">✓ Vérifié</span>':'<span class="badge" style="background:var(--grey2)">Compte de base</span>'; }
 // ===== PAGE VENDEUR DÉTAILLÉE =====
 async function openSeller(sid){ closeAll();
   const mine = curProfile && curProfile.uid===sid;
@@ -504,7 +621,8 @@ function detail(id){let l=allListings.find(x=>x.id===id);if(!l)return;
   ${mine?'<div class="info">C\'est ton article.</div>':
     `<div class="row" style="gap:8px;margin-top:8px">
       <button class="btn g" style="flex:1" onclick="curUser?openChatFromListing('${l.id}'):openAuth('sell')">💬 Discuter</button>
-      <button class="btn ghost" style="flex:1" onclick="shareListing('${l.id}')">📤 Partager</button></div>
+      <button class="btn ghost" style="flex:1" onclick="shareListing('${l.id}')">📤 Partager</button>
+      <button class="btn ghost" style="flex:0 0 54px;font-size:19px" onclick="curUser?toggleFav('${l.id}',true):favCta()">${myFavs.has(l.id)?'❤️':'🤍'}</button></div>
      <a id="detWa" class="btn ghost" style="margin-top:8px;display:none;text-decoration:none" target="_blank" rel="noopener">🟢 Contacter sur WhatsApp</a>
      <button class="btn ghost" style="margin-top:8px" onclick="curUser?startContact('${l.id}'):openAuth('sell')">🛡️ Lancer une transaction sécurisée</button>
      <div class="info" style="text-align:center">🔒 Achat sécurisé : validation mutuelle. Commission ${Math.round(COMM_RATE*100)}%.</div>`}
@@ -565,7 +683,7 @@ async function doLogin(){let e=val('le'),p=val('lp');if(!e||!p)return toast('Rem
  try{
   await auth.signInWithEmailAndPassword(e,p);
   await refreshMe(); // garantit le chargement du profil avant l'affichage
-  toast('Bienvenue 👋');closeAll();view='home';shell();
+  toast('Bienvenue 👋');closeAll();view='home';shell(); maybeOnboard();
  }
  catch(err){toast('❌ '+(err.code==='auth/user-not-found'||err.code==='auth/wrong-password'?'Email ou mot de passe incorrect':(err.code==='auth/user-disabled'?'Compte désactivé':err.code)));}}
 async function doRegister(){let n=val('rn'),e=val('re'),p=val('rp'),city=val('rc')||'Abidjan';
@@ -576,7 +694,7 @@ async function doRegister(){let n=val('rn'),e=val('re'),p=val('rp'),city=val('rc
   let isFirst=false;try{let c=await db.collection('users').get();isFirst=(c.size===0);}catch(_){}
   await db.collection('users').doc(uid).set({uid,name:n,email:e.toLowerCase(),city,country:"Côte d'Ivoire",countryCode:'CI',created:Date.now(),role:isFirst?'admin':'member'});
   await refreshMe(); // recharge le profil DÈS que le doc existe (évite de rester sur la page de connexion)
-  toast(isFirst?'🎉 Compte créé — tu es ADMIN (1er utilisateur)':'🎉 Compte créé');closeAll();view='home';shell();
+  toast(isFirst?'🎉 Compte créé — tu es ADMIN (1er utilisateur)':'🎉 Compte créé');closeAll();view='home';shell(); maybeOnboard();
  }catch(err){toast('❌ '+(err.code==='auth/email-already-in-use'?'Cet email existe déjà':err.code));}}
 
 /* ============== SELL ============== */
@@ -790,8 +908,11 @@ async function confirmTx(id,who){let ref=db.collection('transactions').doc(id);l
 /* ============== PROFIL / ADMIN ============== */
 function profileV(){if(!curProfile)return `<div class="center cardp" style="padding:60px 24px"><div style="font-size:60px">👤</div><h2>Espace membre</h2><p class="muted">Connecte-toi pour vendre et gérer tes transactions.</p><button class="btn g" onclick="openAuth()">Créer un compte / se connecter</button></div>`;
  return `<div class="hdr"><h2>Mon compte</h2></div><div style="padding:4px 12px">
-  <div class="listItem"><div class="av">${esc((curProfile.name||'?')[0])}</div><div class="grow"><b>${esc(curProfile.name)} ${isAdmin()?'<span class="badge">ADMIN</span>':''}</b><br><span class="muted">${esc(curProfile.email)}</span></div><span class="badge">Vérifié</span></div>
+  <div class="listItem"><div class="av">${esc((curProfile.name||'?')[0])}</div><div class="grow"><b>${esc(curProfile.name)} ${isAdmin()?'<span class="badge">ADMIN</span>':''}</b><br><span class="muted">${esc(curProfile.email)}</span></div>${verifiedBadge(curProfile)}</div>
+  <div class="info" style="font-size:11.5px;padding:9px 13px">💡 Ajoute ton WhatsApp ci-dessous pour passer en compte « ✓ Vérifié » et être joignable par les acheteurs / cantinières.</div>
   <div class="box"><b>📍 Marché</b><p class="muted">${esc(curProfile.country||'')} · ${esc(curProfile.city||'')}</p></div>
+  <div class="box"><b>❤️ Ma liste (${myFavs.size})</b><p class="muted" style="margin-bottom:8px">Les articles que tu gardes pour plus tard.</p>${favListHtml()}<div style="height:4px"></div><button class="btn ghost sm" onclick="view='home';shell()">Parcourir & ajouter</button></div>
+  <div class="box"><b>🔔 Mes alertes (${myAlerts.length})</b><p class="muted" style="margin-bottom:8px">Préviens-moi des nouvelles annonces selon mes critères.</p>${alertsHtml()}<div style="height:4px"></div><button class="btn g sm" onclick="view='home';shell()">Activer une nouvelle alerte</button></div>
   <div class="box"><b>📱 WhatsApp / téléphone</b><p class="muted">En cas d'achat, les intéressés pourront te joindre directement sur WhatsApp.</p>
     <div style="display:flex;gap:8px;align-items:center"><input id="profWa" class="input" style="margin:0;flex:1" value="${esc(curProfile.wa||'')}" placeholder="Ex : +225 07 00 00 00 00" inputmode="tel"><button class="btn g sm" onclick="saveWa()">Enregistrer</button></div></div>
   <button class="btn ghost" onclick="logout()">Se déconnecter</button></div>`;}
@@ -1190,7 +1311,7 @@ window.addEventListener('beforeinstallprompt',(e)=>{e.preventDefault();deferredP
 async function installPWA(){ if(!deferredPrompt)return; deferredPrompt.prompt(); const c=await deferredPrompt.userChoice; deferredPrompt=null; toast('Merci ! Hametkro est installé 📲'); }
 
 /* ============== DÉMARRAGE ============== */
-try{ fb(); listenListings(); listenTx(); listenConvs(); listenFood(); listenAdmin(); }catch(e){ renderApp(`<div class="load"><div style="font-size:46px">⚠️</div><div>Erreur d'initialisation Firebase.</div><div class="muted">Ouvre cette page via le serveur (http), pas en fichier local, et vérifie firebase-config.js.</div></div>`);}
+try{ fb(); listenListings(); listenTx(); listenConvs(); listenFood(); listenAdmin(); listenFavs(); listenAlerts(); }catch(e){ renderApp(`<div class="load"><div style="font-size:46px">⚠️</div><div>Erreur d'initialisation Firebase.</div><div class="muted">Ouvre cette page via le serveur (http), pas en fichier local, et vérifie firebase-config.js.</div></div>`);}
 </script>
 </body>
 </html>
