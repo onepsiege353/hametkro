@@ -578,8 +578,104 @@ async function onboardSave(){ const wa=document.getElementById('ob_wa').value.re
   catch(e){ closeAll(); view='home';shell(); } }
 function onboardSkip(){ closeAll(); db.collection('users').doc(curProfile.uid).update({onboarded:true}).catch(()=>{}); curProfile={...curProfile,onboarded:true}; view='home';shell(); }
 // « Vérifié » : profil complété (WhatsApp/téléphone) — badge de confiance.
-function verifiedBadge(p){ const ok=p&&((p.wa&&String(p.wa).replace(/[^0-9]/g,'').length>=7)||(p.phone&&String(p.phone).replace(/[^0-9]/g,'').length>=7));
-  return ok?'<span class="badge" style="background:var(--grn)">✓ Vérifié</span>':'<span class="badge" style="background:var(--grey2)">Compte de base</span>'; }
+function verifiedOk(p){ return !!(p&&((p.wa&&String(p.wa).replace(/[^0-9]/g,'').length>=7)||(p.phone&&String(p.phone).replace(/[^0-9]/g,'').length>=7))); }
+function verifiedBadge(p){ return verifiedOk(p)?'<span class="badge" style="background:var(--grn)">✓ Vérifié</span>':'<span class="badge" style="background:var(--grey2)">Compte de base</span>'; }
+/* ====== CONFIANCE VENDEUR (anti-arnaque) ====== */
+function sellerTrust(uid, prof){ const done=(txCache||[]).filter(t=>t.sellerId===uid&&t.status==='done').length;
+  const started=(txCache||[]).filter(t=>t.sellerId===uid&&t.status!=='done').length;
+  const ageDays = prof&&prof.created ? Math.floor((Date.now()-prof.created)/864e5) : null;
+  return {done,started,verified:verifiedOk(prof),ageDays,
+    recent: (prof&&prof.created)?(Date.now()-prof.created)<7*864e5:false,
+    noWa: !verifiedOk(prof), items:(allListings||[]).filter(l=>l.sellerId===uid&&!l.sold).length}; }
+function trustChip(t){ const chips=[];
+  if(t.verified) chips.push('<span class="pres"><i class="dot"></i>Vérifié</span>');
+  else chips.push('<span class="badge" style="background:var(--grey2)">non vérifié</span>');
+  chips.push(`<span class="badge" style="background:var(--grn)">${t.done} vente${t.done>1?'s':''}</span>`);
+  if(t.ageDays!=null) chips.push(`<span class="muted" style="font-size:10px">👤 depuis ${Math.max(1,t.ageDays)} j</span>`);
+  return chips.join(' '); }
+// Détection de mots-clés d'arnaque typiques du marché de la seconde main.
+function scanRisk(text){ const t=String(text||'').toLowerCase(); const hits=[];
+  const pats=[
+    [/(?:donne|donn?es?|envoie|entr(?:e|ez)|envois).{0,24}(?:code|cvv|otp|pin)/,'demande de code/CVV bancaire'],
+    [/paiement\s*(?:d\'|de l\')?avance|pay(?:e|er|ez)?\s*(?:d\'|a )?l\'?avance/,'paiement à l\'avance'],
+    [/envoy(?:e|er|ez)?.{0,16}(?:argent|money|fcf|facilit)|mandat|virement.*(?:d\'avance|d\'abord)/,'envoi d\'argent à l\'avance'],
+    [/\bwestern\s?union\b|\bmoneygram\b/,'transfert Western Union / MoneyGram'],
+    [/\borange\s?money\b|\bmtn\s?money\b|\bwave\b|\bmoov\s?money\b/,'virement mobile (externe)'],
+    [/\bfrais\b.{0,18}(?:livraison|transport|assurance|douane|dossier|compte)/,'frais cachés avant remise'],
+    [/\bbloqu(?:er|e|é)\b.{0,24}(?:paiement|argent|compte)/,'propos de « bloquer un paiement »'],
+    [/\bcarte\b.{0,18}(?:photo|numéro|au bout|gauche|recto|verso)/,'photos/données de carte'],
+    [/hors.{0,6}hametkro|en.{0,4}(?:dehors|direct).{0,8}transaction|wa\.me|whatsapp.{0,6}(?:direct|priv)/,'sortir de la plateforme Hametkro']];
+  pats.forEach(p=>{ if(p[0].test(t)) hits.push(p[1]); }); return hits; }
+function lastRisky(c){ const msgs=c&&c.msgs||[]; const me=curProfile&&curProfile.uid; const recent=msgs.slice(-8);
+  const risky=recent.filter(m=>m.uid!==me && scanRisk(m.text).length); return risky.length?risky[risky.length-1]:null; }
+// Bandeau de sécurité affiché dans le fil de discussion.
+function chatSafetyHTML(c){ if(!c) return ''; const warns=[];
+  const risky=lastRisky(c); if(risky) warns.push('⚠️ Un message récent ressemble à une arnaque : « '+esc((risky.text||'').slice(0,90))+'… »');
+  const o=otherUid(c); if(o){ const prof=sellerCache[o]; if(prof){ const t=sellerTrust(o,prof);
+    if(t.recent&&t.noWa&&t.done===0) warns.push('🆕 Compte récent, non vérifié et sans vente : sois prudent·e.');
+    else if(!t.verified) warns.push('🛡️ Passe par la transaction Hametkro : ne partage jamais ton téléphone/mot de passe.'); } }
+  if(!warns.length) return ''; const rows=warns.map(w=>'<div style="font-size:12px;margin-top:3px">'+w+'</div>').join('');
+  return `<div style="background:var(--org-soft);border:1.5px solid #F2C79A;border-radius:13px;padding:8px 11px;margin:6px 10px 0;flex:none"><div style="display:flex;align-items:flex-start;gap:8px"><span style="flex:none">🛡️</span><div class="grow" style="min-width:0">${rows}</div><span title="Signaler cette discussion" style="cursor:pointer;flex:none;font-size:13px;color:var(--org)" onclick="reportConv()">🚩</span></div></div>`; }
+function confirmRisky(txt,hits){ return new Promise(res=>{
+  openSheet(`<div class="row" style="justify-content:space-between;padding:12px 0"><b>⚠️ Vérification avant envoi</b><span style="cursor:pointer;font-size:20px" onclick="riskAns(false)">✕</span></div>
+   <div class="warn"><b>Ce message contient un motif typique d'arnaque :</b></div>
+   ${hits.map(h=>`<div style="background:var(--org-soft);border-radius:9px;padding:6px 10px;margin-top:4px;font-size:12.5px">• ${esc(h)}</div>`).join('')}
+   <div class="info">Les arnaques passent par le <b>paiement à l'avance</b> ou en <b>sortant de Hametkro</b>. Passe par la transaction sécurisée (paiement à la réception).</div>
+   <div class="muted" style="font-size:11px;margin:6px 0;word-break:break-word">« ${esc((txt||'').slice(0,160))} »</div>
+   <div class="row" style="gap:8px"><button class="btn ghost" style="flex:1" onclick="riskAns(false)">✏️ Modifier</button><button class="btn g" style="flex:1" onclick="riskAns(true)">Envoyer quand même</button></div>`);
+  window.riskAns=(ok)=>{ closeAll(); res(!!ok); }; }); }
+function reportConv(){ if(!_activeCid||!curProfile)return; openSheet(`<div class="row" style="justify-content:space-between;padding:12px 0"><b>🚩 Signaler cette discussion</b><span style="cursor:pointer;font-size:20px" onclick="closeAll()">✕</span></div>
+  <div class="info">Ton signalement est transmis à l'équipe Hametkro pour contrôle. Abus de signalement exclu.</div>
+  <label>Raison</label>
+  <select id="rep_reason" class="input"><option>Tentative d'arnaque</option><option>Paiement à l'avance demandé</option><option>Hors plateforme (hors transaction Hametkro)</option><option>Spam / contenu inapproprié</option><option>Autre</option></select>
+  <label>Précisions (optionnel)</label><textarea id="rep_note" class="input" rows="3"></textarea>
+  <button class="btn g" onclick="doReportConv()">Envoyer le signalement</button>`); }
+async function doReportConv(){ const reason=val('rep_reason')||'Autre';
+  try{ await db.collection('reports').add({cid:_activeCid,reportedBy:curProfile.uid,reporterName:curProfile.name,otherId:otherUid(_convData),otherName:(otherName(_convData)||{}).name||'?',reason,note:val('rep_note'),itemId:(_convData&&_convData.itemId)||'',createdAt:Date.now()}); closeAll(); toast('🚩 Signalement envoyé — merci'); }catch(e){ toast('❌ '+(e&&e.message||'erreur')); } }
+/* ====== AVATAR / PHOTO DE PROFIL (compressé, stocké sur le profil) ====== */
+function readImg(file){ return new Promise((res)=>{ const r=new FileReader(); r.onload=()=>res(r.result); r.readAsDataURL(file); }); }
+async function imageToDataUrl(file){ let src=await readImg(file); return new Promise((res)=>{ const img=new Image(); img.onload=()=>{ const s=220; let m=Math.min(1,s/Math.max(img.width,img.height)); const cv=document.createElement('canvas'); cv.width=Math.max(1,Math.round(img.width*m)); cv.height=Math.max(1,Math.round(img.height*m)); cv.getContext('2d').drawImage(img,0,0,cv.width,cv.height); res(cv.toDataURL('image/jpeg',.82)); }; img.onerror=()=>res(null); img.src=src; }); }
+function profAvatar(p,size,emo){ emo=emo||'🛍️'; const s=size||40; if(p&&p.avatar) return `<img src="${esc(p.avatar)}" style="width:${s}px;height:${s}px;border-radius:50%;object-fit:cover;flex:none">`;
+  return `<div style="width:${s}px;height:${s}px;border-radius:50%;background:linear-gradient(135deg,var(--org-soft),var(--grn-soft));display:flex;align-items:center;justify-content:center;font-size:${Math.round(s*0.5)}px;flex:none">${emo}</div>`; }
+function editProfileSheet(){ if(!curProfile)return openAuth();
+  const p=curProfile; const wa=p.wa||p.phone||'';
+  openSheet(`<div class="row" style="justify-content:space-between;padding:12px 0"><h2 style="margin:0;font-size:18px">👤 Mon profil</h2><span style="cursor:pointer;font-size:20px" onclick="closeAll()">✕</span></div>
+   <div style="text-align:center;margin:6px 0 12px;position:relative;width:96px;margin-left:auto;margin-right:auto"><div id="ep_avatar">${profAvatar(curProfile,96,'👤')}</div><div title="Changer ma photo" onclick="document.getElementById('ep_file').click()" style="position:absolute;right:-6px;bottom:4px;background:var(--org);color:#fff;width:30px;height:30px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:14px;cursor:pointer;border:2px solid #fff;box-shadow:0 3px 8px rgba(0,0,0,.25)">📷</div></div>
+   <input type="file" id="ep_file" accept="image/*" style="display:none" onchange="epAvatarPick(this)">
+   <label>Nom complet</label><input id="ep_name" class="input" value="${esc(p.name||'')}">
+   <div class="row" style="align-items:flex-start"><div class="grow"><label>WhatsApp / téléphone</label><input id="ep_wa" class="input" value="${esc(wa)}" inputmode="tel" placeholder="+225…"></div><div style="width:118px"><label>Ville</label><input id="ep_city" class="input" value="${esc(p.city||'')}"></div></div>
+   <label>Bio / « à propos » (ce que tu vends, dispo, zone)</label><textarea id="ep_bio" class="input" rows="3">${esc(p.bio||'')}</textarea>
+   <div class="info">🛡️ Une photo + un numéro vérifié augmentent la confiance des acheteurs et limitent les arnaques.</div>
+   <button class="btn g" onclick="saveProfileEdit()">Enregistrer mon profil</button>`); }
+function epAvatarPick(inp){ const f=inp.files&&inp.files[0]; inp.value=''; if(!f)return;
+  imageToDataUrl(f).then(d=>{ if(!d)return toast('Image invalide'); _avatarTmp=d;
+    const el=document.getElementById('ep_avatar'); if(el) el.innerHTML=`<img src="${esc(d)}" style="width:96px;height:96px;border-radius:50%;object-fit:cover">`; }); }
+let _avatarTmp=null;
+async function saveProfileEdit(){ const p=curProfile; const name=val('ep_name').trim(); if(name.length<2)return toast('Nom requis');
+  const wa=val('ep_wa').replace(/[^0-9+ ]/g,'').trim(); const city=val('ep_city').trim(); const bio=val('ep_bio').trim();
+  const up={name}; if(wa){ const digits=wa.replace(/[^0-9]/g,''); if(digits.length<7)return toast('Numéro invalide'); up.wa=wa; } else up.wa='';
+  if(city) up.city=city; up.bio=bio; if(_avatarTmp){ up.avatar=_avatarTmp; _avatarTmp=null; }
+  try{ await db.collection('users').doc(curProfile.uid).update(up); curProfile={...curProfile,...up}; sellerCache[curProfile.uid]=curProfile;
+    closeAll(); toast('✅ Profil mis à jour'); view='me';shell(); }catch(e){ console.error('PROF_EDIT',e&&e.code,e&&e.message); toast('❌ '+(e&&e.message||'erreur')); } }
+/* ====== NOTIFICATIONS (Notification API — en arrière-plan/onglet masqué) ====== */
+function notifKey(){ return 'ham_notif_'+(curProfile?curProfile.uid:'anon'); }
+function notifWanted(){ return localStorage.getItem(notifKey())!=='0'; }
+function setNotifWanted(v){ localStorage.setItem(notifKey(), v?'1':'0'); }
+function notifGranted(){ return typeof Notification!=='undefined' && Notification.permission==='granted'; }
+function notifBtnState(){ return notifGranted()? '🔔 Activées':'🔕 Désactivées'; }
+function askPushPerm(){ if(typeof Notification==='undefined') return toast('Notifications non supportées ici');
+  if(Notification.permission==='granted'){ setNotifWanted(true); toast('🔔 Notifications activées'); shell(); return; }
+  Notification.requestPermission().then(p=>{ const ok=p==='granted'; setNotifWanted(ok); toast(ok?'🔔 Notifications activées':'Notifications désactivées'); shell(); }); }
+function fireNotif(c){ if(!curProfile||!notifGranted()||!notifWanted()) return; if(document.hasFocus&&document.hasFocus()) return;
+  if(!document.hidden&&!document.hasFocus()) { /* onglet visible mais pas focus: ok, notifier léger */ }
+  const me=curProfile.uid; const msgs=(c&&c.msgs)||[]; const last=msgs[msgs.length-1]; if(!last||last.uid===me) return;
+  const o=otherName(c); const title=(o&&o.name)||'Nouveau message';
+  const body= last.text?((last.img?'📷 ':'')+(last.text.slice(0,120)||'')) : (last.img?'📷 Photo': '');
+  try{ const n=new Notification('💬 '+title,{body,icon:'icon-192.png',tag:'hk_'+c.id,requireInteraction:false});
+    n.onclick=()=>{ window.focus(); try{ openConv(c.id); }catch(e){} n.close(); }; }catch(e){} }
+function notifStateHTML(){ return `<div class="box"><b>🔔 Notifications</b><p class="muted" style="margin:2px 0 8px">Préviens-toi des nouveaux messages même quand l'onglet est en arrière-plan.</p>
+  <div style="display:flex;gap:8px;align-items:center"><button class="btn ${notifGranted()?'g':'ghost'} sm" onclick="askPushPerm()">${notifBtnState()}</button><span class="muted" style="font-size:11px">${notifGranted()?'Autorisées par le navigateur':'demande d\u2019autorisation nécessaire'}</span></div></div>`; }
+
 
 /* ============== PAQUET B : CONFIANCE · FRAÎCHEUR · NÉGOCIATION ============== */
 function listingDays(l){ return Math.floor((Date.now()-(l.time||0))/864e5); }
@@ -674,16 +770,21 @@ async function openSeller(sid){ closeAll();
   const rating = seller && seller.rating ? seller.rating : '4.8';
   const sales = asSeller.length || soldCount;
   const joinedTxt = sellerJoined? ('Membre depuis '+new Date(sellerJoined).getFullYear()) : '';
+  const tTrust=sellerTrust(sid,seller);
+  const caution = (!mine && tTrust.recent && !tTrust.verified && tTrust.done===0) ? `<div class="warn" style="margin:10px 0 0;position:relative">🆕 Profil très récent, non vérifié et sans vente clôturée.<br>Reste prudent·e : remise en lieu sûr, paiement à la réception, jamais d'avance.</div>` : '';
   const head = `<div class="hero" style="border-radius:0;padding:20px 16px">
      <div style="display:flex;gap:14px;align-items:center;position:relative">
-       <div style="width:66px;height:66px;border-radius:50%;background:rgba(255,255,255,.25);display:flex;align-items:center;justify-content:center;font-size:30px;border:2px solid #fff">${mine?'👤':'🛍️'}</div>
-       <div style="flex:1;color:#fff"><div style="font-size:20px;font-weight:900;display:flex;align-items:center;gap:8px;flex-wrap:wrap">${esc(sellerName)} ${seller&&seller.role==='admin'?'<span style="font-size:10px;background:#fff;color:var(--grn);padding:2px 7px;border-radius:8px">ADMIN</span>':''} ${presChip(seller)}</div>
-         <div style="font-size:12px;opacity:.95">📍 ${esc(sellerCity)} · ${esc(joinedTxt)}</div>
-         <div style="font-size:12px;margin-top:6px">${esc(sellerEmail?sellerEmail:'Vendeur vérifié par Hametkro')}</div></div>
+       ${seller&&seller.avatar?`<img src="${esc(seller.avatar)}" style="width:72px;height:72px;border-radius:50%;object-fit:cover;flex:none;border:2.5px solid #fff;box-shadow:0 8px 18px rgba(0,0,0,.28)">`:`<div style="width:66px;height:66px;border-radius:50%;background:rgba(255,255,255,.25);display:flex;align-items:center;justify-content:center;font-size:30px;border:2px solid #fff">${mine?'👤':'🛍️'}</div>`}
+       <div style="flex:1;color:#fff;min-width:0"><div style="font-size:20px;font-weight:900;display:flex;align-items:center;gap:8px;flex-wrap:wrap">${esc(sellerName)} ${seller&&seller.role==='admin'?'<span style="font-size:10px;background:#fff;color:var(--grn);padding:2px 7px;border-radius:8px">ADMIN</span>':''}</div>
+         <div style="font-size:12px;opacity:.96;display:flex;align-items:center;gap:8px;flex-wrap:wrap">📍 ${esc(sellerCity)}${joinedTxt?(' · '+esc(joinedTxt)):''}${presChip(seller)}</div>
+         ${seller&&seller.bio?`<div style="font-size:12px;margin-top:6px;opacity:.94;line-height:1.45">${esc(seller.bio)}</div>`:''}</div>
      </div>
-     <div style="display:flex;gap:10px;margin-top:14px;position:relative">
-       <div class="badge-chip">⭐ ${rating} note</div><div class="badge-chip">✅ ${sales} vente${sales>1?'s':''}</div><div class="badge-chip">🛒 ${myItems.length} en vente</div>
-     </div>
+     <div style="display:flex;gap:8px;margin-top:14px;position:relative;flex-wrap:wrap;align-items:center">
+       ${verifiedOk(seller)?'<span class="badge-chip">✓ Vérifié</span>':'<span class="badge-chip">Compte de base</span>'}
+       <span class="badge-chip">✅ ${tTrust.done} vente${tTrust.done>1?'s':''}</span>
+       <span class="badge-chip">🛒 ${myItems.length} en vente</span>
+       <span class="badge-chip">⭐ ${rating}</span>
+     </div>${caution}
    </div>`;
   const sellerItems = myItems.length ? `<div style="padding:6px 12px"><h3 style="margin:12px 2px 8px">Ses annonces</h3><div class="grid" style="padding-top:4px">${myItems.map(tile).join('')}</div></div>` : '<p class="muted center" style="padding:30px">Ce vendeur n\'a pas d\'article en vente actuellement.</p>';
   const phW=((seller&&(seller.wa||seller.phone))||'').replace(/[^0-9]/g,'');
@@ -854,11 +955,18 @@ function mySeen(c){return c&&c.seen&&curProfile ? (c.seen[curProfile.uid]||0):0;
 function unreadOf(c){ if(!curProfile)return 0; const s=mySeen(c); return ((c.msgs||[]).filter(m=>m.uid!==curProfile.uid&&m.time>s)).length; }
 function chatIsOpen(){return !!_activeCid;}
 // Charge mes conversations (temps réel) une fois connecté.
-function listenConvs(){ auth.onAuthStateChanged(u=>{ if(chatUnsub)chatUnsub(); chatUnsub=null; convCache=[]; msgUnread=0; _activeCid=null;
+let _prevUnread=0;
+function listenConvs(){ auth.onAuthStateChanged(u=>{ if(chatUnsub)chatUnsub(); chatUnsub=null; convCache=[]; msgUnread=0; _prevUnread=0; _activeCid=null;
   if(!u){ if(view==='msg'||view==='home')boot(); return; }
   chatUnsub=db.collection('conversations').where('participantIds','array-contains',u.uid).onSnapshot(snap=>{
     convCache=snap.docs.map(d=>d.data());
     msgUnread=convCache.reduce((s,c)=>s+unreadOf(c),0);
+    if(msgUnread>_prevUnread && !chatIsOpen()){
+      // notifie le fil qui vient de recevoir un message (si arrière-plan)
+      const grown=convCache.filter(c=>unreadOf(c)>0).sort((a,b)=>(b.lastAt||0)-(a.lastAt||0));
+      if(grown.length) fireNotif(grown[0]);
+    }
+    _prevUnread=msgUnread;
     if(!chatIsOpen() && (view==='msg'||view==='home'))boot();
   }); }); }
 // Liste mes conversations (onglet Messages)
@@ -998,6 +1106,7 @@ async function openConv(cid){ if(!curProfile) return openAuth();
       <span style="cursor:pointer;font-size:15px;color:var(--grey);padding:4px" onclick="toggleConvSearch()">✕</span>
     </div>
     ${ctxBar}
+    <div id="safetyArea"></div>
     ${quick}
     <div style="flex:1;position:relative;display:flex;min-height:0">
       <div class="chatBox" id="convSc" style="position:absolute;inset:0;height:auto;max-height:none">${convBubbles(_convData)}</div>
@@ -1019,18 +1128,24 @@ async function openConv(cid){ if(!curProfile) return openAuth();
   if(_metaTimer)clearInterval(_metaTimer);
   _metaTimer=setInterval(()=>{ refreshChatMeta(); loadChatOther(); }, 20000);
   function renderOfferArea(){ const el=document.getElementById('offerArea'); if(el) el.innerHTML=offerBannerHTML(_convData?_convData.offer:null); }
+  function renderSafety(){ const sa=document.getElementById('safetyArea'); if(sa) sa.innerHTML=chatSafetyHTML(_convData); }
+  function paintAvatar(prof){ const av=document.getElementById('chatAvatar'); if(!av)return;
+    const online = prof&&isOnline(prof);
+    av.style.borderColor = online? 'var(--grn)':'var(--line2)';
+    if(prof&&prof.avatar){ av.innerHTML=`<img src="${esc(prof.avatar)}" style="width:38px;height:38px;border-radius:50%;object-fit:cover">`; } }
   function refreshChatMeta(){ const st=document.getElementById('chatStatus'); if(!st)return;
     const t=_convData&&_convData.typing;
     if(t&&t.uid&&t.uid!==(curProfile&&curProfile.uid)&&(Date.now()-t.at)<5000){ st.innerHTML='<span style="color:var(--grn);font-style:italic">✍️ '+name+' écrit…</span>'; return; }
     async function fill(){ const prof=await getSeller(otherU); if(!st)return;
       if(prof&&prof.presence){ st.innerHTML = isOnline(prof)?'<span class="pres"><i class="dot"></i>En ligne</span>':'<span class="pres off"><i class="dot"></i>Vu '+timeago(prof.presence)+'</span>'; }
       else { st.innerHTML='🛍️ '+(esc(_convData?(_convData.itemTitle||''):'')); }
-      const av=document.getElementById('chatAvatar'); if(av){ av.style.borderColor = (prof&&isOnline(prof))? 'var(--grn)':'var(--line2)'; }
+      paintAvatar(prof); renderSafety();
     }
     fill(); }
   async function loadChatOther(){ const el=document.getElementById('chatVerified'); if(!el)return;
     const prof=await getSeller(otherU); if(el) el.innerHTML=prof?verifiedBadge(prof):'';
-    const av=document.getElementById('chatAvatar'); if(av) av.style.borderColor=(prof&&isOnline(prof))?'var(--grn)':'var(--line2)'; }
+    paintAvatar(prof); renderSafety(); }
+  renderSafety();
   if(chatUnsub)chatUnsub();
   chatUnsub=ref.onSnapshot(snap=>{ if(!snap.exists)return; const prev=_convData; _convData=snap.data();
     // Réconcilie avec les envois optimistes pas encore confirmés (évite tout retour en arrière visuel).
@@ -1041,7 +1156,7 @@ async function openConv(cid){ if(!curProfile) return openAuth();
     if(newIn && !wasAtBottom){ showNewPill(); } else if(newIn && wasAtBottom){ scrollConv(); }
     if(!newIn && (wasAtBottom||prev==null)) scrollConv();
     updateCsCount();
-    renderOfferArea(); refreshChatMeta();
+    renderOfferArea(); refreshChatMeta(); renderSafety();
     if(unreadOf(_convData)>0) convMarkSeen(cid,_convData); });
 }
 /* --- Recherche dans le fil de discussion --- */
@@ -1110,8 +1225,10 @@ function chatOnPhoto(inp){ const f=inp.files&&inp.files[0]; inp.value=''; if(!f|
       const cv=document.createElement('canvas'); cv.width=Math.max(1,Math.round(img.width*m)); cv.height=Math.max(1,Math.round(img.height*m));
       cv.getContext('2d').drawImage(img,0,0,cv.width,cv.height); _chatImg=cv.toDataURL('image/jpeg',.72); sendMsg(); };
     img.src=r.result; }; r.readAsDataURL(f); }
-function sendMsg(){ const inp=document.getElementById('msgText'); const txt=inp?inp.value.trim():'';
+async function sendMsg(){ const inp=document.getElementById('msgText'); const txt=inp?inp.value.trim():'';
   const img=_chatImg; if((!txt&&!img)||!_activeCid) return;
+  // Anti-arnaque : si le message contient des motifs à risque, on demande confirmation.
+  if(txt){ const _risk=scanRisk(txt); if(_risk.length){ const ok=await confirmRisky(txt,_risk); if(!ok){ if(inp) inp.value=txt; return; } } }
   if(inp) inp.value=''; _chatImg=null; chatTypingStop();
   const now=Date.now();
   const msg={uid:curProfile.uid,name:curProfile.name,time:now};
@@ -1180,8 +1297,10 @@ async function confirmTx(id,who){let ref=db.collection('transactions').doc(id);l
 /* ============== PROFIL / ADMIN ============== */
 function profileV(){if(!curProfile)return `<div class="center cardp" style="padding:60px 24px"><div style="font-size:60px">👤</div><h2>Espace membre</h2><p class="muted">Connecte-toi pour vendre et gérer tes transactions.</p><button class="btn g" onclick="openAuth()">Créer un compte / se connecter</button></div>`;
  return `<div class="hdr"><h2>Mon compte</h2></div><div style="padding:4px 12px">
-  <div class="listItem"><div class="av">${esc((curProfile.name||'?')[0])}</div><div class="grow"><b>${esc(curProfile.name)} ${isAdmin()?'<span class="badge">ADMIN</span>':''}</b><br><span class="muted">${esc(curProfile.email)}</span></div>${verifiedBadge(curProfile)}</div>
-  <div class="info" style="font-size:11.5px;padding:9px 13px">💡 Ajoute ton WhatsApp ci-dessous pour passer en compte « ✓ Vérifié » et être joignable par les acheteurs / cantinières.</div>
+  <div class="listItem"><div style="cursor:pointer" onclick="editProfileSheet()">${profAvatar(curProfile,52,'👤')}</div><div class="grow" style="cursor:pointer;min-width:0" onclick="editProfileSheet()"><b>${esc(curProfile.name)} ${isAdmin()?'<span class="badge">ADMIN</span>':''}</b><br><span class="muted">${esc(curProfile.email)}</span><div style="margin-top:4px">${verifiedBadge(curProfile)}</div></div><button class="btn ghost sm" onclick="editProfileSheet()">✏️</button></div>
+  <div class="box" style="display:flex;gap:10px;align-items:center;border-left:4px solid var(--grn)"><div class="grow"><b>🛍️ Profil vendeur</b><p class="muted" style="margin:2px 0">Photo, bio, ville et numéro pour rassurer les acheteurs et activer « ✓ Vérifié ».</p></div><button class="btn g sm" onclick="editProfileSheet()">Modifier</button></div>
+  ${notifStateHTML()}
+  ${curProfile.bio?`<div class="box"><b>📝 À propos</b><p class="muted" style="margin:4px 0">${esc(curProfile.bio)}</p></div>`:''}
   <div class="box"><b>📍 Marché</b><p class="muted">${esc(curProfile.country||'')} · ${esc(curProfile.city||'')}</p></div>
   <div class="box"><b>❤️ Ma liste (${myFavs.size})</b><p class="muted" style="margin-bottom:8px">Les articles que tu gardes pour plus tard.</p>${favListHtml()}<div style="height:4px"></div><button class="btn ghost sm" onclick="view='home';shell()">Parcourir & ajouter</button></div>
   <div class="box"><b>🔔 Mes alertes (${myAlerts.length})</b><p class="muted" style="margin-bottom:8px">Préviens-moi des nouvelles annonces selon mes critères.</p>${alertsHtml()}<div style="height:4px"></div><button class="btn g sm" onclick="view='home';shell()">Activer une nouvelle alerte</button></div>
