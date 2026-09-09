@@ -916,7 +916,117 @@ async function saveEditPrice(id){ const l=allListings.find(x=>x.id===id); if(!l)
   try{ await db.collection('listings').doc(id).update({p, updatedAt:Date.now()});
     closeAll(); toast('✅ Prix modifié ('+fmt(p)+' FCFA)'); if(view==='sell'||view==='home')shell(); }
   catch(e){ console.error('EDITP',e&&e.code,e&&e.message); toast('❌ '+(e&&e.message||'erreur')); } }
-// --- « Proposer un prix » : négociation structurée hébergée sur la conversation ---
+// ============== DÉPANNAGE GROUPÉ (Idée 3) ==============
+/* Achat groupé : le vendeur active des paliers (ex 3 → −5 %, 6 → −10 %), les
+ * acheteurs « rejoignent le groupe » ; quand un seuil est atteint le prix réduit
+ * est débloqué et chacun lance sa transaction sécurisée individuelle au tarif
+ * réduit. Uniquement pour les articles (pas services), jamais en cas de vente. */
+const GB_DEFAULT_TIERS=[{min:3,off:5},{min:6,off:10}];
+function gbActive(l){ return !!(l&&!l.svc&&!l.sold&&l.gb&&l.gb.on); }
+function gbTiers(l){ return (gbActive(l)&&Array.isArray(l.gb.tiers))?l.gb.tiers.filter(t=>t&&t.min>0).slice().sort((a,b)=>a.min-b.min):[]; }
+function gbMembers(l){ return (l&&l.gb&&Array.isArray(l.gb.members))?l.gb.members.slice():[]; }
+function gbCount(l){ return gbMembers(l).length; }
+function gbIsMember(l,uid){ return !!uid&&gbMembers(l).some(m=>m.uid===uid); }
+// Remise actuellement débloquée (meilleur palier dont min <= nb de membres).
+function gbReachedOff(l){ const n=gbCount(l); let off=0; gbTiers(l).forEach(t=>{ if(n>=t.min&&t.off>off) off=t.off; }); return off; }
+function gbNextTier(l){ const n=gbCount(l); return gbTiers(l).find(t=>n<t.min)||null; }
+// Prix réduit pour un membre une fois le seuil atteint (sinon null → prix plein).
+function gbMemberPrice(l,uid){ if(!gbActive(l))return null; const off=gbReachedOff(l); if(!gbIsMember(l,uid)||off<=0)return null; return Math.round(l.p*(1-off/100)); }
+function gbReducedPrice(l){ const off=gbReachedOff(l); return off>0?Math.round(l.p*(1-off/100)):null; }
+function gbTierText(t){ return `≥ ${t.min} · −${t.off} %`; }
+// ===== Config / activation par le vendeur =====
+function gbSetupSheet(id){ const l=allListings.find(x=>x.id===id); if(!l)return;
+  if(!curProfile||l.sellerId!==curProfile.uid)return toast('Réservé au vendeur');
+  const gb=l.gb||{}; const t0=(gb.tiers&&gb.tiers[0])||GB_DEFAULT_TIERS[0]; const t1=(gb.tiers&&gb.tiers[1])||GB_DEFAULT_TIERS[1];
+  openSheet(`<div class="row" style="justify-content:space-between;padding:12px 0"><h2 style="margin:0;font-size:18px">🤝 Groupe d'achat</h2><span style="cursor:pointer;font-size:20px" onclick="closeAll()">✕</span></div>
+   <p class="muted" style="margin:0 0 8px;font-size:13px">Tu proposes une remise si plusieurs acheteurs se groupent. Chacun rejoindra sans payer maintenant, puis validera sa transaction au prix réduit.</p>
+   <label>Point de remise commun (où le groupe se retrouve)</label>
+   <input id="gb_point" class="input" value="${esc(gb.point||(curProfile.zone||curProfile.city||'Abidjan'))}" placeholder="Ex : Campus UFHB, portail vert">
+   <div class="row" style="gap:8px;align-items:flex-start">
+     <div class="grow"><label>Palier 1 — à partir de…</label><input id="gb_m1" class="input" inputmode="numeric" value="${t0.min}" autocomplete="off"></div>
+     <div class="grow"><label>…réduction %</label><input id="gb_o1" class="input" inputmode="numeric" value="${t0.off}" autocomplete="off"></div>
+   </div>
+   <div class="row" style="gap:8px;align-items:flex-start">
+     <div class="grow"><label>Palier 2 — à partir de… (0 = désactivé)</label><input id="gb_m2" class="input" inputmode="numeric" value="${t1.min}" autocomplete="off"></div>
+     <div class="grow"><label>…réduction %</label><input id="gb_o2" class="input" inputmode="numeric" value="${t1.off}" autocomplete="off"></div>
+   </div>
+   <div class="info">💡 Ex : 3 acheteurs → −5 % ; 6 → −10 %. Ne choisis pas une remise trop forte.</div>
+   <button class="btn g" onclick="gbSave('${l.id}')">Activer le groupe d'achat</button>`); }
+async function gbSave(id){ const l=allListings.find(x=>x.id===id); if(!l)return;
+  if(!curProfile||l.sellerId!==curProfile.uid)return toast('Réservé au vendeur');
+  const point=val('gb_point').trim()||'Abidjan';
+  const mk=(m,o)=>({min:parseInt(m,10)||0,off:parseInt(o,10)||0});
+  const a=mk(val('gb_m1'),val('gb_o1')), b=mk(val('gb_m2'),val('gb_o2'));
+  let tiers=[]; [a,b].forEach(t=>{ if(t.min>0&&t.off>0){ if(t.off>70)return toast('Remise max 70 %'); tiers.push(t); } });
+  if(!tiers.length)return toast('Renseigne au moins un palier valide');
+  const old=gbMembers(l);
+  try{ await db.collection('listings').doc(id).update({gb:{on:true,point,tiers:tiers.sort((x,y)=>x.min-y.min),members:old,updatedAt:Date.now()}});
+    closeAll(); toast("🤝 Groupe d'achat activé"); if(view==='sell'||view==='home')shell(); }
+  catch(e){ console.error('GB_SAVE',e&&e.message); toast('❌ '+(e&&e.message||'erreur')); } }
+async function gbTurnOff(id){ const l=allListings.find(x=>x.id===id); if(!l)return;
+  if(!curProfile||l.sellerId!==curProfile.uid)return toast('Réservé au vendeur');
+  try{ await db.collection('listings').doc(id).update({gb:firebase.firestore.FieldValue.delete()});
+    toast("Groupe d'achat fermé"); if(view==='sell'||view==='home')shell(); }catch(e){ toast('❌ '+(e&&e.message||'erreur')); } }
+// ===== Rejoindre / quitter (acheteur) =====
+async function gbJoin(id){ if(!curProfile)return openAuth(); let l=allListings.find(x=>x.id===id); if(!l||!gbActive(l))return;
+  if(l.sellerId===curProfile.uid)return toast("C'est ton propre article");
+  if(gbIsMember(l,curProfile.uid))return;
+  const before=gbReachedOff(l);
+  const mem={uid:curProfile.uid,name:curProfile.name,time:Date.now()};
+  const members=gbMembers(l).filter(m=>m.uid!==curProfile.uid); members.push(mem);
+  const gb=Object.assign({},l.gb,{members});
+  try{ await db.collection('listings').doc(id).update({gb});
+    toast('🤝 Tu es dans le groupe ('+members.length+')');
+    const after=gbReachedOff(Object.assign({},l,{gb}));
+    if(after>before&&after>0){ toast('🎉 Seuil atteint : prix réduit −'+after+' % débloqué !'); }
+    if(!chatIsOpen())shell(); }
+  catch(e){ console.error('GB_JOIN',e&&e.message); toast('❌ '+(e&&e.message||'erreur')); } }
+async function gbLeave(id){ if(!curProfile)return openAuth(); let l=allListings.find(x=>x.id===id); if(!l||!gbActive(l))return;
+  if(!gbIsMember(l,curProfile.uid))return;
+  const members=gbMembers(l).filter(m=>m.uid!==curProfile.uid);
+  const gb=Object.assign({},l.gb,{members});
+  try{ await db.collection('listings').doc(id).update({gb}); toast('↩️ Tu as quitté le groupe'); if(!chatIsOpen())shell(); }
+  catch(e){ toast('❌ '+(e&&e.message||'erreur')); } }
+// ===== Panneau affiché dans la fiche article =====
+function gbPanel(l,mine){ if(!l||l.svc||l.sold)return '';
+  const on=gbActive(l);
+  if(mine){
+    return `<div class="box" style="margin-top:10px;border-left:4px solid #7B1FA2;background:#FBF4FE">
+      <div class="row" style="align-items:center"><b style="font-size:13px">🤝 Groupe d'achat</b>
+        <span class="chip on" style="cursor:default">${on?'ACTIF':'Inactif'}</span></div>
+      ${on?`<div class="muted" style="font-size:12px;margin-top:4px;line-height:1.5">${gbMembers(l).length} participant${gbMembers(l).length>1?'s':''} · ${gbTiers(l).map(gbTierText).join('  /  ')}${gbReachedOff(l)?(' · <b style="color:var(--grn)">−'+gbReachedOff(l)+' % débloqué</b>'):''}<br>📍 ${esc(l.gb.point||'')}</div>
+        <div class="row" style="gap:8px;margin-top:8px"><button class="btn ghost sm" style="flex:1" onclick="gbSetupSheet('${l.id}')">✏️ Modifier</button>
+        <button class="btn ghost sm" style="flex:1" onclick="gbTurnOff('${l.id}')">Fermer le groupe</button></div>`
+      :`<p class="muted" style="font-size:12px;margin:6px 0 10px">Propose une remise si plusieurs acheteurs se groupent (ex : 3 → −5 %, 6 → −10 %).</p>
+        <button class="btn g" style="width:100%" onclick="gbSetupSheet('${l.id}')">🤝 Créer un groupe d'achat</button>`}</div>`; }
+  if(!on)return '';
+  const n=gbCount(l), off=gbReachedOff(l), next=gbNextTier(l); const reduced=gbReducedPrice(l);
+  const myMember=gbIsMember(l,curProfile&&curProfile.uid);
+  const nT=gbTiers(l);
+  let progTxt = off>0 ? `🎉 Prix réduit −${off} % débloqué !` : (next?`Encore ${next.min-n} participant${next.min-n>1?'s':''} pour −${next.off} %`:``);
+  let action;
+  if(myMember){
+    const gp=gbMemberPrice(l,curProfile.uid);
+    action=`<div class="row" style="gap:8px;margin-top:8px">
+       <button class="btn g" style="flex:1" onclick="curUser?openChatFromListing('${l.id}'):openAuth('sell')">💬 Discuter & acheter${gp?(' à '+fmt(gp)+' FCFA'):''}</button>
+       <button class="btn ghost" style="flex:0 0 auto" onclick="gbLeave('${l.id}')">Quitter</button></div>`;
+  } else {
+    action=`<div class="row" style="gap:8px;margin-top:8px">
+       <button class="btn g" style="flex:1" onclick="gbJoin('${l.id}')">🤝 Rejoindre le groupe</button></div>
+       <div class="muted" style="font-size:11px;margin-top:4px">Tu rejoins sans payer maintenant. À ${nT.length?nT[0].min:''}+ tu profites du prix réduit.</div>`;
+  }
+  return `<div class="box" style="margin-top:10px;border-left:4px solid #7B1FA2;background:#FBF4FE">
+    <div class="row" style="align-items:center;gap:8px"><b style="font-size:13px">🤝 Achat groupé</b><span class="muted" style="font-size:11px">📍 ${esc(l.gb.point||'')}</span></div>
+    <div class="muted" style="font-size:12px;margin:4px 0">${n} participant${n>1?'s':''} · paliers : ${nT.map(gbTierText).join(' · ')}${off>0?(' · <b style="color:var(--grn)">vous payez ${fmt(reduced)} FCFA</b>'):''}</div>
+    ${nT.length?`<div style="background:#fff;border:1px solid var(--line);border-radius:9px;padding:7px 9px;font-size:11.5px">${progTxt}</div>`:''}
+    ${action}
+    <div class="muted" style="font-size:10.5px;margin-top:6px">Remise en lieu sûr au point commun. Transaction sécurisée individuelle au tarif réduit — ne paie jamais d'avance.</div></div>`; }
+// Injecte le panneau « Groupe d'achat » dans la fiche (via DOM, pour ne pas
+// modifier la fiche d'un article ordinaire ni d'un service).
+function injectGbPanel(l){ if(!l||l.svc||l.sold)return; const m=document.getElementById('modal'); if(!m)return;
+  const mine=curProfile&&l.sellerId===curProfile.uid; const html=gbPanel(l,mine); if(!html)return;
+  const cardp=m.querySelector('.cardp'); const host=(cardp||m); host.insertAdjacentHTML('beforeend', html); }
+
 async function ensureConvFor(l){ const cid=convIdKey(curProfile.uid,l.sellerId,l.id);
   const ref=db.collection('conversations').doc(cid); const d=await ref.get();
   if(!d.exists){ await ref.set({id:cid,participantIds:[curProfile.uid,l.sellerId].sort(),
@@ -967,7 +1077,7 @@ async function startTxFromOffer(){ const c=_convData; if(!c)return;
   const amount=(c.offer&&c.offer.amount)||l.p;
   await createTxAt(l.id, amount); }
 async function createTxAt(id, forceAmount){ let l=allListings.find(x=>x.id===id); if(!l)return;
-  const p=forceAmount||l.p; if(!p||p<=0)return toast('Prix invalide');
+  const p=forceAmount||gbMemberPrice(l,curProfile.uid)||l.p; if(!p||p<=0)return toast('Prix invalide');
   let doc=db.collection('transactions').doc(); let now=Date.now();
   try{
     await doc.set({id:doc.id,itemId:id,itemTitle:l.t,buyerId:curProfile.uid,buyerName:curProfile.name,sellerId:l.sellerId,sellerName:l.sellerName,participants:[curProfile.uid,l.sellerId],mode:'hand',price:p,status:'agreed',validBuyer:false,validSeller:false,commission:Math.round(p*COMM_RATE),createdAt:now,updatedAt:now});
@@ -1080,6 +1190,7 @@ async function openSeller(sid){ closeAll();
      </div>
      <div class="info" style="text-align:center">🔒 Achat sécurisé : validation mutuelle. Commission ${Math.round(COMM_RATE*100)}%. Ne paie jamais d'avance.</div>`}
   </div>`);
+  injectGbPanel(l);
   loadDetSeller(l.sellerId);
   loadDetWa(l.sellerId);
 }
@@ -1653,7 +1764,7 @@ async function sendMsg(){ const inp=document.getElementById('msgText'); const tx
 function startContact(id){let l=allListings.find(x=>x.id===id);if(!l)return;
  openSheet(`<div class="row" style="justify-content:space-between;padding:12px 0"><b>Contacter ${esc(l.sellerName)}</b><span style="cursor:pointer;font-size:20px" onclick="closeAll()">✕</span></div>
   <div class="info">Transaction <b>sécurisée</b> : validation mutuelle acheteur + vendeur, commission ${Math.round(COMM_RATE*100)}% tracée.</div>
-  <label>Prix convenu (FCFA) *</label><input id="ag_p" class="input" type="text" inputmode="numeric" value="${fmt(l.p)}" autocomplete="off" oninput="moneyFmt(this)">
+  <label>Prix convenu (FCFA) *</label><input id="ag_p" class="input" type="text" inputmode="numeric" value="${fmt(gbMemberPrice(l,curProfile.uid)||l.p)}" autocomplete="off" oninput="moneyFmt(this)">
   <label>Mode de remise</label>
   <div class="row" style="gap:8px;margin:8px 0">
    <div class="card grow" style="cursor:pointer;padding:10px;text-align:center;border:2px solid var(--org)" onclick="pickMode('hand',this)"><div style="font-size:24px">🤝</div><b>Main propre</b><div class="muted">Lieu public</div></div>
