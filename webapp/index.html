@@ -923,7 +923,12 @@ function listingAgeChip(l){ const d=listingDays(l);
   if(d<=7) return '<span class="muted" style="font-size:10px">publié '+timeago(l.time)+'</span>';
   return '<span class="warn" style="padding:4px 9px;font-size:10px;margin:0">⚠️ '+(d>45?'annonce ancienne':'publié il y a '+d+' j')+'</span>'; }
 async function bumpListing(id){ const d=await db.collection('listings').doc(id).get(); if(!d.exists)return;
-  await d.ref.update({time:Date.now(),createdAt:Date.now()}); toast('↻ Remise en avant 🔥'); closeAll(); view='sell';shell(); }
+  const key='ham_bump_'+id; const last=parseInt(localStorage.getItem(key)||'0',10);
+  const wait=2*3600*1000; if(Date.now()-last<wait){ const m=Math.ceil((wait-(Date.now()-last))/60000); return toast('⏳ Réessaie dans '+m+' min (anti-spam)'); }
+  try{
+    await d.ref.update({time:Date.now(),createdAt:Date.now()}); localStorage.setItem(key,String(Date.now()));
+    toast('↻ Remise en avant 🔥'); closeAll(); view='sell';shell();
+  }catch(e){ toast('❌ '+(e&&e.message||'erreur')); } }
 async function toggleSoldMine(id){ const d=await db.collection('listings').doc(id).get(); if(!d.exists)return;
   const now=!d.data().sold; await d.ref.update({sold:now}); toast(now?'✅ Marquée vendue':'↩️ Remise en vente'); closeAll(); view='sell';shell(); }
 // Modifier le prix d'un article déjà publié (le vendeur uniquement).
@@ -1199,11 +1204,12 @@ async function openSeller(sid){ closeAll();
   <div class="box" style="display:flex;gap:10px;align-items:center;cursor:pointer" onclick="closeAll();openSeller('${l.sellerId}')"><div class="av">🛍️</div><div class="grow" id="detSeller"><span class="muted">…</span></div></div>
   ${mine
     ? `<div class="info" style="border-left:4px solid var(--grn)">C'est ton article.${l.sold?' <b>Marqué vendu.</b>':''}</div>
-       ${listingStale(l)?`<div class="warn"><b>⚠️ Annonce publiée il y a ${listingDays(l)} j.</b> Remets-la en avant pour la voir remonter dans « Nouveautés ».</div>`:''}
+       ${listingStale(l)?`<div class="warn">⚠️ Annonce publiée il y a ${listingDays(l)} j. <button class="btn g sm" style="margin-left:6px" onclick="bumpListing('${l.id}')">↻ Remettre en avant</button></div>`:''}
        <div class="row" style="gap:8px;margin-top:8px">
          <button class="btn g" style="flex:1" onclick="editPriceSheet('${l.id}')">✏️ Modifier le prix</button>
          <button class="btn ghost" style="flex:1" onclick="toggleSoldMine('${l.id}')">${l.sold?'↩️ Remettre en vente':'✅ Marquer vendue'}</button>
-       </div>`
+       </div>
+       ${(!l.sold&&!listingStale(l))?`<button class="btn ghost sm" style="margin-top:8px;width:100%" onclick="bumpListing('${l.id}')">↻ Remettre en avant (remonter dans « Nouveautés »)</button>`:''}`
     : l.sold
       ? `<div class="row" style="gap:8px;margin-top:8px">
         <button class="btn ghost" style="flex:1" onclick="shareListing('${l.id}')">📤 Partager</button>
