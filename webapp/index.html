@@ -386,6 +386,22 @@ function buildNotifs(uid){
       arr.push({id:t.id+'_disp',icon:'⚠️',title:'Litige en cours',body:'« '+esc(t.itemTitle)+' » : l\'admin va arbitrer.',time:ts,read:false});
     }
   });
+  // Notifications « Dépannage groupé » : quand un palier d'un de mes groupes est atteint.
+  // Dérivées des annonces (allListings) dont je suis le vendeur — même modèle que ci-dessus.
+  try{
+    (allListings||[]).forEach(l=>{
+      if(!l||l.sellerId!==uid) return;
+      if(!gbActive(l)) return;
+      const n=gbCount(l); let best=null;
+      gbTiers(l).forEach(t=>{ if(n>=t.min && (!best||t.off>best.off)) best=t; });
+      if(best){
+        const ts=(l.gb&&l.gb.updatedAt)||l.time||Date.now();
+        arr.push({id:'gb_'+l.id+'_'+best.min,icon:'🤝',title:"Groupe d'achat : palier atteint",
+          body:'« '+esc(l.t)+' » : '+n+' participant'+(n>1?'s':'')+' → −'+best.off+' % débloqué pour le groupe.',time:ts,read:false});
+      }
+    });
+  }catch(e){ console.error('GBNOTIF',e&&e.message); }
+
   arr.sort((a,b)=>b.time-a.time);
   const readSet=new Set(JSON.parse(localStorage.getItem(notifReadKey(uid))||'[]'));
   arr.forEach(n=>{ if(readSet.has(n.id)) n.read=true; });
@@ -2100,7 +2116,7 @@ function listenAdmin(){
 function listenListings(){if(_listListened)return; _listListened=true;
   // Cap serveur (leçon « pagination ») : borne la lecture initiale du catalogue.
   // Quand le catalogue dépassera 1000, on basculera sur une pagination par curseur.
-  db.collection('listings').orderBy('time','desc').limit(1000).onSnapshot(snap=>{allListings=snap.docs.map(d=>d.data());if(!chatIsOpen())boot();if(!_deepDone){_deepDone=true;setTimeout(openListingFromURL,200);}},err=>{renderApp(`<div class="load"><div style="font-size:46px">⚠️</div><div>Impossible de lire les annonces.<br><span class="muted">Vérifie que Firestore est activé et les règles publiées.</span></div><div>${esc(err&&err.message||'')}</div></div>`);});}
+  db.collection('listings').orderBy('time','desc').limit(1000).onSnapshot(snap=>{allListings=snap.docs.map(d=>d.data());if(curUser&&curUser.uid)buildNotifs(curUser.uid);if(!chatIsOpen())boot();if(!_deepDone){_deepDone=true;setTimeout(openListingFromURL,200);}},err=>{renderApp(`<div class="load"><div style="font-size:46px">⚠️</div><div>Impossible de lire les annonces.<br><span class="muted">Vérifie que Firestore est activé et les règles publiées.</span></div><div>${esc(err&&err.message||'')}</div></div>`);});}
 function listenTx(){auth.onAuthStateChanged(u=>{ if(!u){txCache=[];notifsCache=[];notifUnread=0;return;}
   db.collection('transactions').where('participants','array-contains',u.uid).onSnapshot(snap=>{txCache=snap.docs.map(d=>d.data());buildNotifs(u.uid);if(!chatIsOpen()&&(view==='sell'||view==='admin'||view==='home'))boot();}); });}
 // Reconstruit aussi les notifs au chargement initial d'un utilisateur connecté.
