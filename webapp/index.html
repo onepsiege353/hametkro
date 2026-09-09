@@ -567,7 +567,7 @@ function tile(l){let im=firstImg(l);
     ${(l.photos&&l.photos.length>1)?`<span style="position:absolute;right:44px;top:8px;background:rgba(0,0,0,.5);color:#fff;font-size:9px;padding:2px 6px;border-radius:6px">🖼 ${l.photos.length}</span>`:''}
     ${l.sold?`<span style="position:absolute;left:8px;top:8px;background:rgba(0,0,0,.55);color:#fff;font-size:9px;font-weight:800;padding:3px 8px;border-radius:999px">${isSvc(l)?'TERMINÉ':'VENDU'}</span>`:''}
     <span class="new">${(Date.now()-(l.time||0))<3*864e5?'NOUVEAU':''}</span></div>
-  <div class="bd"><h4>${esc(l.t)}</h4><div class="pr" style="${isSvc(l)?'color:var(--org);font-size:12.5px':''}">${isSvc(l)?('🛠 '+svcPriceTxt(l)):(fmt(l.p)+' FCFA')}</div>
+  <div class="bd"><h4>${esc(l.t)}</h4><div class="pr"${isSvc(l)?` style="color:var(--org);font-size:12.5px"`:''}>${isSvc(l)?('🛠 '+svcPriceTxt(l)):(fmt(l.p)+' FCFA')}</div>
     <div class="me"><span>📍 ${esc(l.city||'')}</span><span>${timeago(l.time)}</span></div></div></div>`;}
 
 // Carte compacte d'un service (bandeau « Bende » de l'accueil).
