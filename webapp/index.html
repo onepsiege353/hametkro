@@ -42,12 +42,14 @@ if ('serviceWorker' in navigator) {
     --sh-s:0 6px 16px -10px rgba(15,60,40,.16);
     --ring:0 0 0 4px rgba(14,122,68,.15);
     --font:'Sora','Segoe UI',system-ui,Roboto,Arial,sans-serif;
+    --kb:0px; /* hauteur clavier mobile (maintenue par JS via visualViewport) */
   }
   *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
   html{-webkit-text-size-adjust:100%}
   body{margin:0;font-family:var(--font);background:linear-gradient(180deg,#EAF0EA,#E2E9E4);color:var(--ink);letter-spacing:.1px;overflow-x:hidden}
   input,select,textarea{font-family:inherit}
   button{font-family:inherit}
+  img{max-width:100%;vertical-align:middle}
   .shell{max-width:480px;margin:0 auto;min-height:100vh;min-height:100dvh;background:var(--paper);position:relative;box-shadow:0 0 0 1px rgba(0,0,0,.03),0 0 60px rgba(30,80,50,.06);padding-bottom:84px}
   #app{display:flex;flex-direction:column}
   .flag{display:flex;height:3.5px;border-radius:999px;overflow:hidden;margin:0 14px}
@@ -108,8 +110,8 @@ if ('serviceWorker' in navigator) {
   .nav button.on .i{transform:scale(1.05)}
   .toast{position:fixed;top:16px;left:50%;transform:translateX(-50%);background:#14261E;color:#fff;padding:12px 18px;border-radius:14px;z-index:99;opacity:0;transition:.28s;font-size:13.5px;max-width:92%;text-align:center;box-shadow:0 18px 40px -12px rgba(0,0,0,.5);font-weight:600}
   .scrim{position:fixed;inset:0;background:rgba(14,28,20,.5);z-index:50;display:none;-webkit-backdrop-filter:blur(3px);backdrop-filter:blur(3px)}
-  .sheet{position:fixed;bottom:0;left:50%;transform:translateX(-50%);width:100%;max-width:480px;background:#fff;z-index:70;border-radius:24px 24px 0 0;padding:8px 18px 26px;max-height:92vh;overflow:auto;box-shadow:0 -20px 60px rgba(0,0,0,.25);display:none}
-  .modal{position:fixed;inset:0;z-index:60;display:none;background:var(--paper);max-width:480px;margin:0 auto;overflow:auto;padding-bottom:60px}
+  .sheet{position:fixed;bottom:0;left:50%;transform:translateX(-50%);width:100%;max-width:480px;background:#fff;z-index:70;border-radius:24px 24px 0 0;padding:8px 18px calc(26px + var(--kb));max-height:92vh;max-height:calc(92dvh - var(--kb));overflow:auto;box-shadow:0 -20px 60px rgba(0,0,0,.25);display:none}
+  .modal{position:fixed;inset:0;z-index:60;display:none;background:var(--paper);max-width:480px;margin:0 auto;overflow:auto;padding-bottom:calc(60px + var(--kb))}
   .listItem{display:flex;gap:12px;align-items:center;padding:12px;background:#fff;border:1px solid var(--line);border-radius:14px;margin:8px 0;cursor:pointer;transition:.15s;box-shadow:var(--sh-s)}
   .listItem:hover{transform:translateX(3px)}
   .av{width:46px;height:46px;border-radius:50%;background:linear-gradient(135deg,var(--org-soft),var(--grn-soft));display:flex;align-items:center;justify-content:center;font-size:22px;flex:none}
@@ -289,6 +291,35 @@ function timeago(t){if(!t)return '';let s=(Date.now()-t)/1000;if(s<60)return 'à
 function uidr(){return Math.random().toString(36).slice(2,9)}
 function logoMark(s){var u='hk'+Math.floor(Math.random()*1e6);return '<svg class="hkmark" width="'+s+'" height="'+s+'" viewBox="0 0 48 48" aria-hidden="true"><defs><linearGradient id="'+u+'" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#1C9E63"/><stop offset=".55" stop-color="#0E7A44"/><stop offset="1" stop-color="#0A5E34"/></linearGradient></defs><rect x="1.5" y="1.5" width="45" height="45" rx="13" fill="url(#'+u+')"/><rect x="1.5" y="1.5" width="45" height="45" rx="13" fill="none" stroke="rgba(255,255,255,.4)" stroke-width="1.1"/><path d="M16.5 12.5v15c0 3.6 2.9 6.5 6.5 6.5" fill="none" stroke="#fff" stroke-width="4.6" stroke-linecap="round" stroke-linejoin="round"/><path d="M31.5 12.5v15c0 3.6-2.9 6.5-6.5 6.5" fill="none" stroke="#fff" stroke-width="4.6" stroke-linecap="round" stroke-linejoin="round"/><path d="M16.5 25h15" stroke="#fff" stroke-width="4.6" stroke-linecap="round"/><circle cx="37" cy="10" r="3" fill="#FFA13E" stroke="#0E7A44" stroke-width="1"/></svg>';}
 function toast(m){let t=document.getElementById('toast');t.innerHTML=m;t.style.opacity=1;clearTimeout(t._h);t._h=setTimeout(()=>t.style.opacity=0,2400)}
+// ---------- Clavier mobile : garder la saisie visible ----------
+// Le clavier recouvre souvent le bas d'une feuille/modal (formulaires de vente,
+// inscription…). On mesure le rabat du visualViewport et on l'applique via la
+// variable CSS --kb (marge en bas des overlays) ; un champ focalisé est aussi
+// ramené dans la zone visible. Sans effet quand il n'y a pas de clavier.
+function _kbSync(){
+  let kb=0;
+  if(window.visualViewport){
+    const top=window.visualViewport.offsetTop||0;
+    kb=Math.max(0,(window.innerHeight||0)-(top+window.visualViewport.height));
+  }
+  try{ document.documentElement.style.setProperty('--kb',kb+'px'); }catch(e){}
+}
+(function(){
+  if(window.visualViewport){
+    window.visualViewport.addEventListener('resize',_kbSync);
+    window.visualViewport.addEventListener('scroll',_kbSync);
+  }
+  window.addEventListener('resize',_kbSync);
+  window.addEventListener('orientationchange',()=>setTimeout(_kbSync,150));
+  _kbSync();
+  document.addEventListener('focusin',e=>{
+    const t=e&&e.target; if(!t)return;
+    if(t.tagName==='INPUT'||t.tagName==='TEXTAREA'||t.tagName==='SELECT'){
+      _kbSync();
+      setTimeout(()=>{ try{ if(t.closest && t.closest('.sheet,.modal')) t.scrollIntoView({block:'nearest',inline:'nearest'}); }catch(_){} },80);
+    }
+  });
+})();
 // ---------- Gestion du bouton retour (v28, navigateur + PWA installée) ----------
 // Le bouton retour système (Android/iOS) doit d'abord fermer la fenêtre ouverte
 // (sheet/modal) et ne quitter l'app que si rien n'est affiché — que l'app soit
