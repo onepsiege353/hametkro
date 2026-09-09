@@ -1452,7 +1452,10 @@ function _pushChat(){ if(!_chatEntry){ _chatEntry=true; try{ history.pushState({
 function convIdKey(a,b,item){return [a,b].sort().join('__')+'__'+item;}
 function otherName(c){ return curProfile && (c.participants||[]).find(p=>p.uid!==curProfile.uid); }
 function mySeen(c){return c&&c.seen&&curProfile ? (c.seen[curProfile.uid]||0):0;}
-function unreadOf(c){ if(!curProfile)return 0; const s=mySeen(c); return ((c.msgs||[]).filter(m=>m.uid!==curProfile.uid&&m.time>s)).length; }
+function unreadOf(c){ if(!curProfile)return 0; const s=mySeen(c);
+  // Les utilisateurs bloqués ne génèrent pas de « non-lu » ni d'avertissement.
+  if(isBlocked(otherUid(c))) return 0;
+  return ((c.msgs||[]).filter(m=>m.uid!==curProfile.uid&&m.time>s)).length; }
 function chatIsOpen(){return !!_activeCid;}
 // Charge mes conversations (temps réel) une fois connecté.
 let _prevUnread=0;
@@ -1489,10 +1492,10 @@ function messagesV(){ if(!curProfile) return `<div class="hdr"><h2>Messages</h2>
      const soldTag = it&&it.sold?`<span class="badge" style="background:var(--grey2)">vendu</span>`:'';
      const off=(c.offer&&(c.offer.status==='sent'||c.offer.status==='accepted'))?c.offer:null;
      const offerChip = off ? `<span class="badge" style="background:${off.status==='accepted'?'var(--grn)':'var(--gold)'};margin-left:4px">${off.status==='accepted'?'✓ prix accepté':'💰 offre'}</span>` : '';
-     return `<div class="chatItem" onclick="openConv('${c.id}')">
-      <div class="av" style="background:linear-gradient(160deg,#E3F3E9,#FBEEDC)">🛍️</div>
+     return `<div class="chatItem" onclick="openConv('${c.id}')" style="${isBlocked(o&&o.uid)?'opacity:.62':''}">
+      <div class="av" style="background:linear-gradient(160deg,#E3F3E9,#FBEEDC)">${isBlocked(o&&o.uid)?'🚫':'🛍️'}</div>
       <div class="grow"><div style="display:flex;justify-content:space-between;align-items:center">
-        <b style="font-size:14px">${esc(o?o.name:'Vendeur')}</b><span class="muted" style="font-size:10px">${timeago(c.lastAt)}</span></div>
+        <b style="font-size:14px">${esc(o?o.name:'Vendeur')}${isBlocked(o&&o.uid)?' <span style="font-size:9px;color:var(--sang)">Bloqué</span>':''}</b><span class="muted" style="font-size:10px">${timeago(c.lastAt)}</span></div>
         <div style="font-size:12px;color:var(--grn);font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${iem} ${soldTag}${offerChip}</div>
         <div style="display:flex;justify-content:space-between;align-items:center"><span class="muted" style="font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(last?(last.uid===curProfile.uid?'Vous : ':'')+last.text:'Nouvelle discussion')}</span>
         ${u?`<span style="background:var(--org);color:#fff;font-size:9px;font-weight:800;border-radius:50%;min-width:17px;height:17px;display:flex;align-items:center;justify-content:center;padding:0 3px;flex:none">${u}</span>`:''}</div></div>
@@ -1525,6 +1528,39 @@ function convMarkSeen(cid,data){ if(!curProfile)return; const seen=Object.assign
     updateMsgNavBadge();
     if(!chatIsOpen() && view==='msg') shell(); } }
 function otherUid(c){ const o=otherName(c); return o?o.uid:null; }
+// --- Bloquer / débloquer un interlocuteur (anti-harcèlement) ---
+// Liste des utilisateurs bloqués conservée sur mon profil (`users/{uid}.blocked`).
+function myBlocked(){ return (curProfile&&Array.isArray(curProfile.blocked))?curProfile.blocked:[]; }
+function isBlocked(uid){ return !!uid && myBlocked().indexOf(uid)>=0; }
+function _persistBlocked(){ // écrit la liste courante + la garde localement
+  const list=myBlocked();
+  db.collection('users').doc(curProfile.uid).update({blocked:list}).catch(()=>{});
+  curProfile={...curProfile,blocked:list}; sellerCache[curProfile.uid]=curProfile; }
+async function blockUser(uid){ if(!curProfile||!uid||uid===curProfile.uid)return toast('Impossible');
+  const list=myBlocked(); if(list.indexOf(uid)<0){ list.push(uid); }
+  curProfile={...curProfile,blocked:list};
+  try{ await db.collection('users').doc(curProfile.uid).update({blocked:list}); }
+  catch(e){ console.error('BLK',e&&e.message); }
+  toast('🚫 Utilisateur bloqué'); if(view==='msg'||view==='home')shell(); else if(!chatIsOpen())shell(); }
+async function unblockUser(uid){ if(!curProfile||!uid)return;
+  const list=myBlocked().filter(x=>x!==uid); curProfile={...curProfile,blocked:list};
+  try{ await db.collection('users').doc(curProfile.uid).update({blocked:list}); }
+  catch(e){ console.error('UBLK',e&&e.message); }
+  toast('Interlocuteur débloqué'); if(!chatIsOpen())shell(); }
+function blockSheet(uid,name){ if(!curProfile)return openAuth();
+  const blocked=isBlocked(uid);
+  openSheet(`<div class="row" style="justify-content:space-between;padding:12px 0"><b>Gestion</b><span style="cursor:pointer;font-size:20px" onclick="closeAll()">✕</span></div>
+   <div class="box" style="border-left:4px solid var(--sang);background:#FDF2F2">
+     <b>🚫 ${blocked?'Tu as bloqué':'Bloquer'} ${esc(name||'cet utilisateur')}</b>
+     <p class="muted" style="font-size:12px;margin:4px 0 10px">${blocked
+       ?'Il/elle ne peut plus te déranger. Tu peux le/la débloquer à tout moment.'
+       :'Bloqué, ses messages ne t\'avertiront plus et tu ne le verras pas comme actif. Tu pourras le débloquer après.'}</p>
+     ${blocked
+       ?`<button class="btn ghost sm" style="width:100%" onclick="unblockUser('${uid}')">Débloquer cet utilisateur</button>`
+       :`<button class="btn g sm" style="width:100%;background:var(--sang)" onclick="blockUser('${uid}')">🚫 Bloquer ${esc(name||'')}</button>`}
+     <div style="height:8px"></div>
+     <button class="btn ghost sm" style="width:100%" onclick="reportConv()">🚩 Signaler cette discussion</button>
+   </div>`); }
 // Met à jour EN DIRECT le petit badge « non-lus » de l'onglet Messages dans la barre
 // du bas (sans re-rendre tout le shell → on garde la position et la vue courante).
 // Appelé dès qu'un message arrive, quel que soit l'écran où se trouve le vendeur.
@@ -1627,6 +1663,7 @@ async function openConv(cid){ if(!curProfile) return openAuth();
       <div style="display:flex;align-items:center;flex:none;gap:2px">
         ${item?`<span style="font-size:12px;font-weight:800;color:var(--grn);cursor:pointer;padding:8px 2px" onclick="detail('${item.id}')">Voir</span>`:''}
         <span id="searchTgl" title="Chercher dans la conversation" style="font-size:17px;cursor:pointer;padding:8px 4px" onclick="toggleConvSearch()">🔍</span>
+        <span title="Gérer / bloquer" style="font-size:17px;cursor:pointer;padding:8px 4px" onclick="blockSheet(otherUid(_convData), otherName(_convData)?otherName(_convData).name:'')">${isBlocked(otherUid(_convData))?'🚫':'⋯'}</span>
       </div>
     </div>
     <div class="csbar" id="csBar">
