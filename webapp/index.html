@@ -782,14 +782,11 @@ function notifWanted(){ return localStorage.getItem(notifKey())!=='0'; }
 function setNotifWanted(v){ localStorage.setItem(notifKey(), v?'1':'0'); }
 function notifGranted(){ return typeof Notification!=='undefined' && Notification.permission==='granted'; }
 function notifBtnState(){ return notifGranted()? '🔔 Activées':'🔕 Désactivées'; }
-const VAPID_PUBLIC='BKEkalXTkkfTHGQ17eCTvtnNWPDrlnGMncp7-PRQmbrDg-CXs6v1o27uhuI6Qg1RhzGPYnk92tyfO2KabAJrJo0';
-// Netlify Function : envoie une notification push même quand l'app est fermée.
-const PUSH_URL = location.origin + '/.netlify/functions/push';
-function notifyServerPush(toUid, title, body, tag){
-  if(!toUid || toUid === (curProfile && curProfile.uid)) return;
-  try{ fetch(PUSH_URL,{method:'POST',headers:{'Content-Type':'application/json'},
-    body:JSON.stringify({to:toUid,title:title||'Hametkro',body:body||'',tag:tag||'hk',icon:'./icon-192.png'})}).catch(()=>{}); }
-  catch(e){} }
+const VAPID_PUBLIC='BHq-NV581i9VT08IP3pRKSkK76eS4uJhrR7Rs320Jp-SrE9KUIyUmhusAuttYh3LT72m0Go0Ocb7xYpyh9w_-Cs';
+// NB : le push natif « app fermée » est désormais envoyé par une Cloud Function
+// Firebase (déclencheur Firestore sur les conversations) — aucun endpoint
+// d'hébergeur front nécessaire (voir cloudfunctions/). La clé VAPID publique
+// ci-dessus sert uniquement à la SOUSCRIPTION push côté navigateur.
 function urlB64ToU8(s){ const pad='='.repeat((4-s.length%4)%4); const b=(s+pad).replace(/-/g,'+').replace(/_/g,'/'); const raw=atob(b); const out=new Uint8Array(raw.length); for(let i=0;i<raw.length;i++) out[i]=raw.charCodeAt(i); return out; }
 function abToUrlB64(buf){ let s=''; const u=new Uint8Array(buf); for(let i=0;i<u.length;i++) s+=String.fromCharCode(u[i]); return btoa(s).replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/,''); }
 function pushSubscribe(){ if(!curProfile||!('serviceWorker' in navigator)||!('PushManager' in window)||!notifGranted()) return;
@@ -1484,8 +1481,11 @@ async function sendMsg(){ const inp=document.getElementById('msgText'); const tx
   _convRef.update({msgs:fv.arrayUnion(msg),lastAt:now,lastMsg:msg.text}).then(()=>{
     const i=_pendingMsgs.indexOf(msg); if(i>=0)_pendingMsgs.splice(i,1);
     convMarkSeen(_activeCid,_convData);
-    // Push serveur (même app fermée) : notifie le destinataire hors-ligne.
-    notifyServerPush(otherUid(_convData), '💬 '+(curProfile.name||''), (img?('📷 '+txt):txt).slice(0,120), 'hk_'+_activeCid);
+    // Le push natif (notification système quand l'app du destinataire est
+    // fermée) est désormais déclenché CÔTÉ SERVEUR : une Cloud Function Firebase
+    // écoute l'écriture de cette conversation (doc ajouté) et notifie
+    // l'autre participant automatiquement. Plus aucun appel réseau du client
+    // vers un endpoint d'hébergeur => fonctionne sur GitHub Pages comme partout.
   }).catch(e=>{ console.error('CHAT_SEND_ERR', e && e.code, e && e.message);
     const i=_pendingMsgs.indexOf(msg); if(i>=0)_pendingMsgs.splice(i,1);
     // Échec : on remet la zone d'envoi comme avant, le snapshot serveur rétablira l'état.
