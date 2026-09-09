@@ -466,7 +466,7 @@ function presChip(p){ return isOnline(p)?'<span class="pres"><i class="dot"></i>
 function isAdmin(){return curProfile&&curProfile.role==='admin'}
 
 /* ============== ROUTAGE ============== */
-let view='home', catF='all', q='', svcShow='', allListings=[];
+let view='home', catF='all', q='', svcShow='', coinOn=false, allListings=[];
 // Pagination du fil (leçon Vendito : ne jamais tout charger/afficher d'un coup).
 let feedShow=24;            // nb d'annonces affichées dans la grille
 let _listListened=false;    // garantit un seul abonnement listings/session
@@ -479,7 +479,7 @@ function shell(){
   // Si un fil de discussion est affiché en plein écran, on ne ré-affiche pas
   // le shell à cause d'un snapshot en arrière-plan (bug de sortie du chat).
   if(chatIsOpen()) return;
-  if(view!=='home') svcShow=''; // le mode « services » ne vaut que sur l'accueil
+  if(view!=='home'){ svcShow=''; coinOn=false; } // modes dédiés : seulement sur l'accueil
   // Abonnements admin paresseux (économie de lectures) : actifs seulement sur la
   // vue 'admin'. À appeler avant le rendu pour que les données soient prêtes.
   _admEnsure(view);
@@ -513,8 +513,12 @@ function shell(){
 function homeV(){
   const rc=resolvedCity();
   const svcOnly=(catF==='all'&&svcShow==='svc');
-  const base = svcOnly ? allListings.filter(l=>l.svc&&!l.sold) : allListings.filter(l=>!l.svc&&!l.sold&&(catF==='all'||l.cat===catF));
-  let list=base.filter(l=>(!q||(l.t||'').toLowerCase().includes(q)||(l.city||'').toLowerCase().includes(q))&&(rc==='all'||(l.city||'')===rc));
+  const studMode=(coinOn&&catF==='all');
+  const inFeed=(l)=>(!q||(l.t||'').toLowerCase().includes(q)||(l.city||'').toLowerCase().includes(q))&&(rc==='all'||(l.city||'')===rc);
+  let list;
+  if(svcOnly){ list=allListings.filter(l=>l.svc&&!l.sold&&inFeed(l)); }
+  else if(studMode){ list=allListings.filter(l=>isStudyItem(l)&&inFeed(l)).sort((a,b)=>(b.time||0)-(a.time||0)); }
+  else { list=allListings.filter(l=>!l.svc&&!l.sold&&(catF==='all'||l.cat===catF)&&inFeed(l)); }
   let firstName = curProfile ? (curProfile.name||'Compte').split(' ')[0] : '';
   const mCount=allListings.filter(l=>!l.sold).length;
   let hero = curProfile
@@ -532,13 +536,15 @@ function homeV(){
         <div class="badges"><span class="badge-chip">🔒 Achat sécurisé</span><span class="badge-chip">✅ Validation mutuelle</span><span class="badge-chip">🍽️ Cantinières</span></div>
         <button class="btn gold" style="margin-top:16px;position:relative" onclick="openAuth()">✨ Rejoindre gratuitement</button>
       </div>`;
-  let catSection = svcOnly ? '' : `<div class="catSection"><h3>Parcourir par catégorie</h3>
+  const hideArtic = svcOnly || studMode;
+  let catSection = hideArtic ? '' : `<div class="catSection"><h3>Parcourir par catégorie</h3>
     <div class="catRow">${CATS.map(c=>`<div class="catCell" onclick="setCat('${c.id}')"><div class="e">${c.e}</div><span>${c.n}</span></div>`).join('')}</div></div>`;
-  let searchChips = `<div class="search"><span class="ic">🔍</span><input class="input" id="q" placeholder="${svcOnly?'Rechercher un service…':'Rechercher un article…'}" value="${esc(q)}" oninput="q=this.value;shell()"></div>`
-    + (svcOnly ? '' : `<div class="chips"><div class="chip ${catF==='all'?'on':''}" onclick="setCat('all')">Tout</div>${CATS.map(c=>`<div class="chip ${catF===c.id?'on':''}" onclick="setCat('${c.id}')">${c.e} ${c.n}</div>`).join('')}</div>`);
+  const ph = studMode?'Rechercher un livre ou un cours…':(svcOnly?'Rechercher un service…':'Rechercher un article…');
+  let searchChips = `<div class="search"><span class="ic">🔍</span><input class="input" id="q" placeholder="${ph}" value="${esc(q)}" oninput="q=this.value;shell()"></div>`
+    + (hideArtic ? '' : `<div class="chips"><div class="chip ${catF==='all'?'on':''}" onclick="setCat('all')">Tout</div>${CATS.map(c=>`<div class="chip ${catF===c.id?'on':''}" onclick="setCat('${c.id}')">${c.e} ${c.n}</div>`).join('')}</div>`);
   // --- NOUVEAUTÉS mises en avant : annonces récentes (< 48h), bandeau scrollable
   let featured='';
-  if(catF==='all' && !q && !svcOnly){
+  if(catF==='all' && !q && !svcOnly && !studMode){
     const fresh=allListings.filter(l=>!l.svc&&!l.sold && (Date.now()-l.time)<48*3600*1000).sort((a,b)=>b.time-a.time);
     if(fresh.length){
       featured=`<div class="featureWrap"><div class="sectionTitle" style="padding-top:12px"><h3>🔥 Nouveautés</h3><a onclick="setCat('all')">Nouveau</a></div>
@@ -548,17 +554,21 @@ function homeV(){
         <div class="fbd"><div class="ft">${esc(f.t)}</div><div class="fp">${fmt(f.p)} FCFA</div></div></div>`;}).join('')}</div></div>`;
     }
   }
-  let title = svcOnly ? `<div class="sectionTitle"><h3>🛠 Services des jeunes</h3><a onclick="svcBackItems()">← Les annonces</a></div>`
-    : (catF!=='all' ? `<div class="sectionTitle"><h3>${catOf(catF).e} ${catOf(catF).n}</h3><a onclick="setCat('all')">Tout voir</a></div>`
-      : `<div class="sectionTitle"><h3>Annonces récentes</h3><a onclick="svcBrowseAll()">Voir les services</a></div>`);
-  let emptyTxt = svcOnly ? "Aucun service pour l'instant. Propose le tien depuis « Vendre »." : `Aucun article pour le moment${cityF!=='all'?` dans cette ville (${esc(resolvedCity())})`:''}.`;
+  let title = studMode ? `<div class="sectionTitle"><h3>🎓 Coin Étudiant</h3><a onclick="coinExit()">← Le marché</a></div>`
+    : (svcOnly ? `<div class="sectionTitle"><h3>🛠 Services des jeunes</h3><a onclick="svcBackItems()">← Les annonces</a></div>`
+      : (catF!=='all' ? `<div class="sectionTitle"><h3>${catOf(catF).e} ${catOf(catF).n}</h3><a onclick="setCat('all')">Tout voir</a></div>`
+        : `<div class="sectionTitle"><h3>Annonces récentes</h3><a onclick="svcBrowseAll()">Voir les services</a></div>`));
+  const studInfo = studMode?`<div class="info" style="margin:0 12px 8px;border-left:4px solid #2B6CB0">📚 Livres & manuels à vendre + 🎓 cours particuliers, entre étudiants. Remise au campus en lieu sûr — <b>ne paie jamais d'avance</b>.</div>`:'';
+  let emptyTxt = studMode ? "Aucune annonce du Coin Étudiant pour l'instant. Publie tes livres ou cours usagés depuis « Vendre »."
+    : (svcOnly ? "Aucun service pour l'instant. Propose le tien depuis « Vendre »."
+      : `Aucun article pour le moment${cityF!=='all'?` dans cette ville (${esc(resolvedCity())})`:''}.`);
   let cards=list.length?`<div class="grid">${list.slice(0,feedShow).map(tile).join('')}</div>`:`<div class="center cardp muted">${emptyTxt}</div>`;
   let more = list.length>feedShow ? `<div style="text-align:center;padding:16px 0 2px"><button class="btn ghost sm" onclick="feedMore()">Afficher plus (${list.length-feedShow} restantes)</button></div>` : '';
-  return hero+actRow()+cityBar()+featured+svcSection()+catSection+searchChips+title+cards+more;
+  return hero+actRow()+coinEntry()+cityBar()+featured+svcSection()+studPrompt()+catSection+searchChips+studInfo+title+cards+more;
 }
 function feedMore(){ feedShow+=24; if(!chatIsOpen()) shell(); }
-function setCat(id){catF=id;svcShow='';feedShow=24;shell();}
-function svcBackItems(){catF='all';svcShow='';q='';feedShow=24;shell();}
+function setCat(id){catF=id;svcShow='';coinOn=false;feedShow=24;shell();}
+function svcBackItems(){catF='all';svcShow='';coinOn=false;q='';feedShow=24;shell();}
 function firstImg(l){return (l.photos&&l.photos.length)?l.photos[0]:(l.img||'');}
 function tile(l){let im=firstImg(l);
   return `<div class="card tile" onclick="detail('${l.id}')">
@@ -577,14 +587,36 @@ function svcCard(l){ const ty=svcCatOf(l.svcType); const im=firstImg(l);
     <div class="fbd"><div class="ft">${esc(l.t)}</div><div class="fp" style="color:var(--org)">${svcPriceTxt(l)}</div>
     <div class="muted" style="font-size:10px;margin-top:2px">📍 ${esc(l.city||'')}${l.svcZone?(' · '+esc(l.svcZone)):''}</div></div></div>`; }
 // Bandeau accueil des services proposés par les jeunes.
-function svcSection(){ if(!(view==='home')) return ''; if(catF!=='all'||q||svcShow==='svc') return '';
+function svcSection(){ if(!(view==='home')) return ''; if(catF!=='all'||q||svcShow==='svc'||coinOn) return '';
   const act=allListings.filter(l=>l.svc&&!l.sold).sort((a,b)=>(b.time||0)-(a.time||0)).slice(0,10);
   if(!act.length) return '';
   return `<div class="featureWrap" style="background:linear-gradient(180deg,#FFF6EC,transparent)">
     <div class="sectionTitle" style="padding-top:14px"><h3>🛠 Services des jeunes</h3><a onclick="svcBrowseAll()">Tout voir</a></div>
     <div class="featured">${act.map(svcCard).join('')}</div></div>`; }
 // Voir TOUS les services (y compris quand il y en a peu / par type).
-function svcBrowseAll(){ catF='all'; q=''; svcShow='svc'; feedShow=24; shell(); }
+function svcBrowseAll(){ catF='all'; q=''; coinOn=false; svcShow='svc'; feedShow=24; shell(); }
+
+/* ============== COIN ÉTUDIANT (Idée 2) ==============
+ * Un sous-espace de confiance : revendre/échanger livres & manuels et trouver
+ * des cours particuliers entre étudiants. Aucune régression sur le marché. */
+const STUDY_CATS=['books'];              // catégories d'articles « livres / manuels »
+const STUDY_SVC_TYPES=['cours'];         // services de cours particuliers (croise Idée 1)
+function isStud(p){ return !!(p && p.school && String(p.school).trim()); }
+function studLine(p){ const s=p&&p.school?String(p.school).trim():''; if(!s)return ''; const f=p&&p.field?(' · '+String(p.field).trim()):''; return '🎓 Étudiant · '+s+f; }
+function studChip(p){ const l=studLine(p); return l?`<span class="badge" style="background:#2B6CB0;color:#fff">${esc(l)}</span>`:''; }
+// Une annonce est « étudiante » si c'est un livre/manuel (ou matériel tagué isStudy)
+// ou un service de cours particuliers.
+function isStudyItem(l){ if(!l||l.sold)return false; if(l.svc)return STUDY_SVC_TYPES.indexOf(l.svcType)>=0; return (STUDY_CATS.indexOf(l.cat)>=0)||!!l.isStudy; }
+function coinEnter(){ catF='all'; q=''; svcShow=''; coinOn=true; feedShow=24; shell(); }
+function coinExit(){ coinOn=false; catF='all'; q=''; shell(); }
+// Bandeau épinglé qui ouvre le Coin Étudiant depuis le fil principal.
+function coinEntry(){ if(!(view==='home'))return ''; if(coinOn||svcShow==='svc')return ''; if(catF!=='all'||q)return '';
+  return `<div style="padding:0 12px 2px"><div class="box" style="display:flex;gap:12px;align-items:center;cursor:pointer;background:linear-gradient(135deg,#EAF1FB,#F3EAFB);border:1px solid #CBD6F0;padding:12px 14px" onclick="coinEnter()">
+    <div style="font-size:30px;flex:none">🎓</div><div class="grow"><b>Coin Étudiant</b><div class="muted" style="font-size:12px;line-height:1.35">Livres, manuels & cours particuliers entre étudiants d'Abidjan 🇨🇮</div></div>
+    <span style="background:#fff;border:1px solid #CBD6F0;border-radius:9px;padding:7px 11px;font-size:12px;font-weight:800;color:#2B6CB0;flex:none">Ouvrir</span></div></div>`; }
+// Rappel dans le Coin Étudiant si connecté sans établissement (encourage le badge).
+function studPrompt(){ if(!(curProfile&&view==='home'&&coinOn))return ''; if(isStud(curProfile))return '';
+  return `<div class="info" style="border-left:4px solid #2B6CB0;margin:2px 12px 8px">🎓 Tu es étudiant·e ? <a style="font-weight:800;text-decoration:underline;cursor:pointer" onclick="editProfileSheet()">Ajoute ton établissement</a> pour afficher le badge Étudiant sur ton profil.</div>`; }
 
 let galIndex={}; // état du carrousel par annonce
 function galleryHtml(l,id){
@@ -788,6 +820,12 @@ function editProfileSheet(){ if(!curProfile)return openAuth();
    <div class="row" style="align-items:flex-start"><div class="grow"><label>WhatsApp / téléphone</label><input id="ep_wa" class="input" value="${esc(wa)}" inputmode="tel" placeholder="+225…"></div><div style="width:112px"><label>Ville</label><input id="ep_city" class="input" value="${esc(p.city||'')}"></div></div>
    <label>Zone / lieu de remise (où tu rencontres tes acheteurs)</label><input id="ep_zone" class="input" value="${esc(p.zone||'')}" placeholder="Ex : Cocody Riviera / Plateau">
    <label>Bio / « à propos » (ce que tu vends, dispo…)</label><textarea id="ep_bio" class="input" rows="2">${esc(p.bio||'')}</textarea>
+   <div class="box" style="margin:2px 0 10px;border-left:4px solid #2B6CB0;background:#F4F7FF">
+     <b style="font-size:13px">🎓 Coin Étudiant <span class="muted" style="font-weight:400">(facultatif)</span></b>
+     <p class="muted" style="margin:4px 0 8px;font-size:12px;line-height:1.4">Dis que tu es étudiant·e pour afficher le badge « Étudiant » sur ton profil et être repéré par le réseau de ton campus.</p>
+     <label>Ton établissement</label><input id="ep_school" class="input" value="${esc(p.school||'')}" placeholder="Ex : UFHB Cocody / Lycée classique…">
+     <label>Filière / niveau</label><input id="ep_field" class="input" value="${esc(p.field||'')}" placeholder="Ex : L2 Droit / Terminale C">
+   </div>
    <div class="row"><div class="grow"><label>Facebook (pseudo)</label><input id="ep_fb" class="input" value="${esc(p.fb||'')}" placeholder="tonpseudo"></div><div class="grow"><label>Instagram (pseudo)</label><input id="ep_ig" class="input" value="${esc(p.ig||'')}" placeholder="tonpseudo"></div></div>
    <div class="row"><div class="grow"><label>TikTok (pseudo)</label><input id="ep_tk" class="input" value="${esc(p.tk||'')}" placeholder="tonpseudo"></div><div class="grow"><label>Mail de contact</label><input id="ep_email2" class="input" value="${esc(p.email||'')}" placeholder="toi@…"></div></div>
    <div class="info">🛡️ Photo + numéro vérifié + réseau augmentent la confiance et limitent les arnaques. Ta ville et ta zone aident à prévoir une remise en lieu sûr.</div>
@@ -802,8 +840,9 @@ let _avatarTmp=null,_coverTmp=null;
 async function saveProfileEdit(){ const p=curProfile; const name=val('ep_name').trim(); if(name.length<2)return toast('Nom requis');
   const wa=val('ep_wa').replace(/[^0-9+ ]/g,'').trim(); const city=val('ep_city').trim(); const bio=val('ep_bio').trim();
   const zone=val('ep_zone').trim(); const fb=val('ep_fb').trim().replace(/^@/,''); const ig=val('ep_ig').trim().replace(/^@/,''); const tk=val('ep_tk').trim().replace(/^@/,'');
+  const school=val('ep_school').trim(); const field=val('ep_field').trim();
   const up={name}; if(wa){ const digits=wa.replace(/[^0-9]/g,''); if(digits.length<7)return toast('Numéro invalide'); up.wa=wa; } else up.wa='';
-  if(city) up.city=city; up.bio=bio; up.zone=zone; up.fb=fb; up.ig=ig; up.tk=tk;
+  if(city) up.city=city; up.bio=bio; up.zone=zone; up.fb=fb; up.ig=ig; up.tk=tk; up.school=school; up.field=field;
   if(_avatarTmp) up.avatar=_avatarTmp;
   if(_coverTmp) up.cover=_coverTmp;
   // On ne vide _avatarTmp/_coverTmp QU'APRÈS une écriture confirmée : s'il y a un
@@ -940,7 +979,7 @@ async function loadDetSeller(sid){ const s=await getSeller(sid);
   const draw=(sp)=>{ if(!el)return; const count=allListings.filter(x=>x.sellerId===sid&&!x.sold).length;
     const name=sp?esc(sp.name):'Vendeur'; const city=sp?(esc(sp.city||'')+' · '):'';
     el.innerHTML=`<b>${name}</b><br><span class="muted">${city}${count?('🛒 '+count+' en vente · '):''}voir profil →</span>
-      <div style="display:flex;gap:6px;margin-top:6px;align-items:center;flex-wrap:wrap">${verifiedBadge(sp)}${presChip(sp)}</div>`; };
+      <div style="display:flex;gap:6px;margin-top:6px;align-items:center;flex-wrap:wrap">${verifiedBadge(sp)}${studChip(sp)}${presChip(sp)}</div>`; };
   draw(s);
   if(el._pt)clearInterval(el._pt);
   el._pt=setInterval(async()=>{ const s2=await getSeller(sid); const e=document.getElementById('detSeller'); if(e)draw(s2); },20000); }
@@ -967,11 +1006,12 @@ async function openSeller(sid){ closeAll();
      <div style="display:flex;gap:14px;align-items:center;position:relative">
        ${seller&&seller.avatar?`<img src="${esc(seller.avatar)}" style="width:72px;height:72px;border-radius:50%;object-fit:cover;flex:none;border:2.5px solid #fff;box-shadow:0 8px 18px rgba(0,0,0,.28)">`:`<div style="width:66px;height:66px;border-radius:50%;background:rgba(255,255,255,.25);display:flex;align-items:center;justify-content:center;font-size:30px;border:2px solid #fff">${mine?'👤':'🛍️'}</div>`}
        <div style="flex:1;color:#fff;min-width:0"><div style="font-size:20px;font-weight:900;display:flex;align-items:center;gap:8px;flex-wrap:wrap">${esc(sellerName)} ${seller&&seller.role==='admin'?'<span style="font-size:10px;background:#fff;color:var(--grn);padding:2px 7px;border-radius:8px">ADMIN</span>':''}</div>
-         <div style="font-size:12px;opacity:.96;display:flex;align-items:center;gap:8px;flex-wrap:wrap">📍 ${esc(sellerCity)}${joinedTxt?(' · '+esc(joinedTxt)):''}${presChip(seller)}</div>
+         <div style="font-size:12px;opacity:.96;display:flex;align-items:center;gap:8px;flex-wrap:wrap">📍 ${esc(sellerCity)}${seller&&seller.school?(' · 🎓 '+esc(seller.school)):''}${joinedTxt?(' · '+esc(joinedTxt)):''}${presChip(seller)}</div>
          ${seller&&seller.bio?`<div style="font-size:12px;margin-top:6px;opacity:.94;line-height:1.45">${esc(seller.bio)}</div>`:''}</div>
      </div>
      <div style="display:flex;gap:8px;margin-top:14px;position:relative;flex-wrap:wrap;align-items:center">
        ${verifiedOk(seller)?'<span class="badge-chip">✓ Vérifié</span>':'<span class="badge-chip">Compte de base</span>'}
+       ${seller&&isStud(seller)?'<span class="badge-chip" style="background:#2B6CB0;color:#fff;border-color:#2B6CB0">🎓 Étudiant</span>':''}
        <span class="badge-chip">✅ ${tTrust.done} vente${tTrust.done>1?'s':''}</span>
        <span class="badge-chip">🛒 ${myItems.length} en vente</span>
        <span class="badge-chip">${rating?`⭐ ${rating}${revCount?` (${revCount})`:''}`:'⭐ Nouveau vendeur'}</span>
