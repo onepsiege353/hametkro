@@ -259,6 +259,23 @@ const CATS=[
  {id:'sports',e:'⚽',n:'Sport & Loisirs'},{id:'books',e:'📚',n:'Livres'}];
 const CONDS=['Neuf','Comme neuf','Très bon état','Bon état','Correct','À réparer'];
 function catOf(id){return CATS.find(c=>c.id===id)||CATS[3]}
+/* ===== Services « Bende » : petits boulots & talents des jeunes ===== */
+const SVCS=[
+ {id:'cours',e:'📚',n:'Cours & tutorat'},
+ {id:'livraison',e:'🛵',n:'Livraison / course'},
+ {id:'beaute',e:'💇🏾',n:'Beauté & coiffure'},
+ {id:'couture',e:'🧵',n:'Couture / retouche'},
+ {id:'photo',e:'📸',n:'Photo & vidéo'},
+ {id:'info',e:'💻',n:'Informatique / montage'},
+ {id:'mecanique',e:'🔧',n:'Réparation / méca'},
+ {id:'menage',e:'🧹',n:'Ménage / aide'},
+ {id:'autre',e:'✨',n:'Autre talent'}];
+const SVC_UNITS=[['h',"à l'heure"],['jour','à la journée'],['forfait','forfait / devis']];
+function svcCatOf(id){return SVCS.find(s=>s.id===id)||SVCS[SVCS.length-1]}
+function isSvc(l){return !!(l&&l.svc)}
+function svcUnitLbl(u){const x=SVC_UNITS.find(s=>s[0]===u);return x?x[1]:''}
+function svcPriceTxt(l){ if(!l)return ''; if(!l.p)return 'Tarif à discuter'; return fmt(l.p)+' FCFA'+(l.svcUnit?(' · '+svcUnitLbl(l.svcUnit)):''); }
+function svcTypeName(l){ return l&&l.svcType? svcCatOf(l.svcType).n : ''; }
 function fmt(n){return Math.round(n||0).toString().replace(/\B(?=(\d{3})+(?!\d))/g,' ')}
 // --- Séparateur de montants à la saisie ---
 // Formate en direct un champ prix (espaces des milliers) tout en gardant la valeur réelle en JS.
@@ -449,7 +466,7 @@ function presChip(p){ return isOnline(p)?'<span class="pres"><i class="dot"></i>
 function isAdmin(){return curProfile&&curProfile.role==='admin'}
 
 /* ============== ROUTAGE ============== */
-let view='home', catF='all', q='', allListings=[];
+let view='home', catF='all', q='', svcShow='', allListings=[];
 // Pagination du fil (leçon Vendito : ne jamais tout charger/afficher d'un coup).
 let feedShow=24;            // nb d'annonces affichées dans la grille
 let _listListened=false;    // garantit un seul abonnement listings/session
@@ -462,6 +479,7 @@ function shell(){
   // Si un fil de discussion est affiché en plein écran, on ne ré-affiche pas
   // le shell à cause d'un snapshot en arrière-plan (bug de sortie du chat).
   if(chatIsOpen()) return;
+  if(view!=='home') svcShow=''; // le mode « services » ne vaut que sur l'accueil
   // Abonnements admin paresseux (économie de lectures) : actifs seulement sur la
   // vue 'admin'. À appeler avant le rendu pour que les données soient prêtes.
   _admEnsure(view);
@@ -494,7 +512,9 @@ function shell(){
 /* ============== HOME (lecture publique) ============== */
 function homeV(){
   const rc=resolvedCity();
-  let list=allListings.filter(l=>!l.sold&&(catF==='all'||l.cat===catF)&&(!q||(l.t||'').toLowerCase().includes(q)||(l.city||'').toLowerCase().includes(q))&&(rc==='all'||(l.city||'')===rc));
+  const svcOnly=(catF==='all'&&svcShow==='svc');
+  const base = svcOnly ? allListings.filter(l=>l.svc&&!l.sold) : allListings.filter(l=>!l.svc&&!l.sold&&(catF==='all'||l.cat===catF));
+  let list=base.filter(l=>(!q||(l.t||'').toLowerCase().includes(q)||(l.city||'').toLowerCase().includes(q))&&(rc==='all'||(l.city||'')===rc));
   let firstName = curProfile ? (curProfile.name||'Compte').split(' ')[0] : '';
   const mCount=allListings.filter(l=>!l.sold).length;
   let hero = curProfile
@@ -512,14 +532,14 @@ function homeV(){
         <div class="badges"><span class="badge-chip">🔒 Achat sécurisé</span><span class="badge-chip">✅ Validation mutuelle</span><span class="badge-chip">🍽️ Cantinières</span></div>
         <button class="btn gold" style="margin-top:16px;position:relative" onclick="openAuth()">✨ Rejoindre gratuitement</button>
       </div>`;
-  let catSection = `<div class="catSection"><h3>Parcourir par catégorie</h3>
+  let catSection = svcOnly ? '' : `<div class="catSection"><h3>Parcourir par catégorie</h3>
     <div class="catRow">${CATS.map(c=>`<div class="catCell" onclick="setCat('${c.id}')"><div class="e">${c.e}</div><span>${c.n}</span></div>`).join('')}</div></div>`;
-  let searchChips = `<div class="search"><span class="ic">🔍</span><input class="input" id="q" placeholder="Rechercher un article…" value="${esc(q)}" oninput="q=this.value;shell()"></div>
-    <div class="chips"><div class="chip ${catF==='all'?'on':''}" onclick="setCat('all')">Tout</div>${CATS.map(c=>`<div class="chip ${catF===c.id?'on':''}" onclick="setCat('${c.id}')">${c.e} ${c.n}</div>`).join('')}</div>`;
+  let searchChips = `<div class="search"><span class="ic">🔍</span><input class="input" id="q" placeholder="${svcOnly?'Rechercher un service…':'Rechercher un article…'}" value="${esc(q)}" oninput="q=this.value;shell()"></div>`
+    + (svcOnly ? '' : `<div class="chips"><div class="chip ${catF==='all'?'on':''}" onclick="setCat('all')">Tout</div>${CATS.map(c=>`<div class="chip ${catF===c.id?'on':''}" onclick="setCat('${c.id}')">${c.e} ${c.n}</div>`).join('')}</div>`);
   // --- NOUVEAUTÉS mises en avant : annonces récentes (< 48h), bandeau scrollable
   let featured='';
-  if(catF==='all' && !q){
-    const fresh=allListings.filter(l=>!l.sold && (Date.now()-l.time)<48*3600*1000).sort((a,b)=>b.time-a.time);
+  if(catF==='all' && !q && !svcOnly){
+    const fresh=allListings.filter(l=>!l.svc&&!l.sold && (Date.now()-l.time)<48*3600*1000).sort((a,b)=>b.time-a.time);
     if(fresh.length){
       featured=`<div class="featureWrap"><div class="sectionTitle" style="padding-top:12px"><h3>🔥 Nouveautés</h3><a onclick="setCat('all')">Nouveau</a></div>
       <div class="featured">${fresh.slice(0,12).map(f=>{let im=firstImg(f);return `<div class="fcard ${f.time>(Date.now()-24*3600*1000)?'on':''}" onclick="detail('${f.id}')">
@@ -528,31 +548,51 @@ function homeV(){
         <div class="fbd"><div class="ft">${esc(f.t)}</div><div class="fp">${fmt(f.p)} FCFA</div></div></div>`;}).join('')}</div></div>`;
     }
   }
-  let title = catF!=='all' ? `<div class="sectionTitle"><h3>${catOf(catF).e} ${catOf(catF).n}</h3><a onclick="setCat('all')">Tout voir</a></div>` : `<div class="sectionTitle"><h3>Annonces récentes</h3></div>`;
-  let cards=list.length?`<div class="grid">${list.slice(0,feedShow).map(tile).join('')}</div>`:`<div class="center cardp muted">Aucun article pour le moment${cityF!=='all'?` dans cette ville (${esc(resolvedCity())})`:''}.</div>`;
+  let title = svcOnly ? `<div class="sectionTitle"><h3>🛠 Services des jeunes</h3><a onclick="svcBackItems()">← Les annonces</a></div>`
+    : (catF!=='all' ? `<div class="sectionTitle"><h3>${catOf(catF).e} ${catOf(catF).n}</h3><a onclick="setCat('all')">Tout voir</a></div>`
+      : `<div class="sectionTitle"><h3>Annonces récentes</h3><a onclick="svcBrowseAll()">Voir les services</a></div>`);
+  let emptyTxt = svcOnly ? "Aucun service pour l'instant. Propose le tien depuis « Vendre »." : `Aucun article pour le moment${cityF!=='all'?` dans cette ville (${esc(resolvedCity())})`:''}.`;
+  let cards=list.length?`<div class="grid">${list.slice(0,feedShow).map(tile).join('')}</div>`:`<div class="center cardp muted">${emptyTxt}</div>`;
   let more = list.length>feedShow ? `<div style="text-align:center;padding:16px 0 2px"><button class="btn ghost sm" onclick="feedMore()">Afficher plus (${list.length-feedShow} restantes)</button></div>` : '';
-  return hero+actRow()+cityBar()+featured+catSection+searchChips+title+cards+more;
+  return hero+actRow()+cityBar()+featured+svcSection()+catSection+searchChips+title+cards+more;
 }
 function feedMore(){ feedShow+=24; if(!chatIsOpen()) shell(); }
-function setCat(id){catF=id;feedShow=24;shell();}
+function setCat(id){catF=id;svcShow='';feedShow=24;shell();}
+function svcBackItems(){catF='all';svcShow='';q='';feedShow=24;shell();}
 function firstImg(l){return (l.photos&&l.photos.length)?l.photos[0]:(l.img||'');}
 function tile(l){let im=firstImg(l);
   return `<div class="card tile" onclick="detail('${l.id}')">
-  <div class="img">${im?`<img src="${esc(im)}" style="width:100%;height:100%;object-fit:cover">`:`<span class="e">${catOf(l.cat).e}</span>`}
+  <div class="img">${im?`<img src="${esc(im)}" style="width:100%;height:100%;object-fit:cover">`:`<span class="e">${isSvc(l)?svcCatOf(l.svcType).e:catOf(l.cat).e}</span>`}
     ${favHeart(l)}
     ${(l.photos&&l.photos.length>1)?`<span style="position:absolute;right:44px;top:8px;background:rgba(0,0,0,.5);color:#fff;font-size:9px;padding:2px 6px;border-radius:6px">🖼 ${l.photos.length}</span>`:''}
-    ${l.sold?`<span style="position:absolute;left:8px;top:8px;background:rgba(0,0,0,.55);color:#fff;font-size:9px;font-weight:800;padding:3px 8px;border-radius:999px">VENDU</span>`:''}
+    ${l.sold?`<span style="position:absolute;left:8px;top:8px;background:rgba(0,0,0,.55);color:#fff;font-size:9px;font-weight:800;padding:3px 8px;border-radius:999px">${isSvc(l)?'TERMINÉ':'VENDU'}</span>`:''}
     <span class="new">${(Date.now()-(l.time||0))<3*864e5?'NOUVEAU':''}</span></div>
-  <div class="bd"><h4>${esc(l.t)}</h4><div class="pr">${fmt(l.p)} FCFA</div>
+  <div class="bd"><h4>${esc(l.t)}</h4><div class="pr" style="${isSvc(l)?'color:var(--org);font-size:12.5px':''}">${isSvc(l)?('🛠 '+svcPriceTxt(l)):(fmt(l.p)+' FCFA')}</div>
     <div class="me"><span>📍 ${esc(l.city||'')}</span><span>${timeago(l.time)}</span></div></div></div>`;}
+
+// Carte compacte d'un service (bandeau « Bende » de l'accueil).
+function svcCard(l){ const ty=svcCatOf(l.svcType); const im=firstImg(l);
+  return `<div class="fcard" onclick="detail('${l.id}')">
+    <div class="fimg" style="background:linear-gradient(160deg,#FBEEDC,#E3F3E9)">${im?`<img src="${esc(im)}">`:`<span style="font-size:44px">${ty.e}</span>`}</div>
+    <div class="fbd"><div class="ft">${esc(l.t)}</div><div class="fp" style="color:var(--org)">${svcPriceTxt(l)}</div>
+    <div class="muted" style="font-size:10px;margin-top:2px">📍 ${esc(l.city||'')}${l.svcZone?(' · '+esc(l.svcZone)):''}</div></div></div>`; }
+// Bandeau accueil des services proposés par les jeunes.
+function svcSection(){ if(!(view==='home')) return ''; if(catF!=='all'||q||svcShow==='svc') return '';
+  const act=allListings.filter(l=>l.svc&&!l.sold).sort((a,b)=>(b.time||0)-(a.time||0)).slice(0,10);
+  if(!act.length) return '';
+  return `<div class="featureWrap" style="background:linear-gradient(180deg,#FFF6EC,transparent)">
+    <div class="sectionTitle" style="padding-top:14px"><h3>🛠 Services des jeunes</h3><a onclick="svcBrowseAll()">Tout voir</a></div>
+    <div class="featured">${act.map(svcCard).join('')}</div></div>`; }
+// Voir TOUS les services (y compris quand il y en a peu / par type).
+function svcBrowseAll(){ catF='all'; q=''; svcShow='svc'; feedShow=24; shell(); }
 
 let galIndex={}; // état du carrousel par annonce
 function galleryHtml(l,id){
   const photos=(l.photos&&l.photos.length)?l.photos:(l.img?[l.img]:[]);
   const cur=galIndex[id]||0;
-  const soldRibbon=l&&l.sold?`<div style="position:absolute;top:0;left:0;width:100%;background:rgba(0,0,0,.45);color:#fff;font-weight:900;font-size:17px;letter-spacing:.5px;text-align:center;padding:7px 0;z-index:4">✅ VENDU</div>`:'';
+  const soldRibbon=l&&l.sold?`<div style="position:absolute;top:0;left:0;width:100%;background:rgba(0,0,0,.45);color:#fff;font-weight:900;font-size:17px;letter-spacing:.5px;text-align:center;padding:7px 0;z-index:4">✅ ${isSvc(l)?'SERVICE TERMINÉ':'VENDU'}</div>`:'';
   const wrap=(inner,ph)=>`<div style="position:relative;height:${ph||200}px">${inner}${soldRibbon}</div>`;
-  if(photos.length===0) return wrap(`<div style="height:100%;display:flex;align-items:center;justify-content:center;font-size:96px;background:linear-gradient(160deg,#E3F3E9,#FBEEDC)">${catOf(l.cat).e}</div>`);
+  if(photos.length===0) return wrap(`<div style="height:100%;display:flex;align-items:center;justify-content:center;font-size:96px;background:linear-gradient(160deg,#E3F3E9,#FBEEDC)">${isSvc(l)?svcCatOf(l.svcType).e:catOf(l.cat).e}</div>`);
   if(photos.length===1) return `<div class="gallery">${soldRibbon}<img src="${esc(photos[0])}"></div>`;
   let dots=photos.map((_,i)=>`<i class="${i===cur?'on':''}"></i>`).join('');
   return `<div class="gallery">
@@ -966,9 +1006,10 @@ async function openSeller(sid){ closeAll();
   renderApp(`<div class="topbar"><div class="logo grow"><b>hamet</b><i>kro</i></div><button class="btn g sm" onclick="view='home';shell()">← Accueil</button></div>${coverBanner}${head}${contactCard}${sellerItems}${reviewsBlock}${actions}<div style="height:30px"></div>`);
   document.documentElement.scrollTop=0;
 }
-function detail(id){let l=allListings.find(x=>x.id===id);if(!l)return;
- let mine=curProfile&&l.sellerId===curProfile.uid;
- let img=galleryHtml(l,id);
+ function detail(id){let l=allListings.find(x=>x.id===id);if(!l)return;
+  let mine=curProfile&&l.sellerId===curProfile.uid;
+  if(isSvc(l)) return detailSvc(l,mine);
+  let img=galleryHtml(l,id);
  openModal(`<div style="position:sticky;top:0;background:#fff;padding:10px 14px;display:flex;justify-content:space-between;border-bottom:1px solid var(--line)"><span>${catOf(l.cat).e} ${catOf(l.cat).n}</span><span style="cursor:pointer;font-size:20px" onclick="closeAll()">✕</span></div>
   ${img}<div class="cardp">
   <h2 style="margin:0">${esc(l.t)}</h2>
@@ -1002,14 +1043,49 @@ function detail(id){let l=allListings.find(x=>x.id===id);if(!l)return;
   loadDetSeller(l.sellerId);
   loadDetWa(l.sellerId);
 }
+// Fiche détail d'un service (Bende) : on « demande » le service, on n'achète pas.
+function detailSvc(l,mine){ const ty=svcCatOf(l.svcType); const img=galleryHtml(l,l.id);
+  const provAct = mine
+    ? `<div class="info" style="border-left:4px solid var(--org)">C'est ton service.${l.sold?' <b>Marqué terminé.</b>':''}</div>
+       <div class="row" style="gap:8px;margin-top:8px">
+         <button class="btn ghost" style="flex:1" onclick="shareListing('${l.id}')">📤 Partager</button>
+         <button class="btn ${l.sold?'g':'ghost'}" style="flex:1" onclick="toggleSoldSvc('${l.id}')">${l.sold?'↩️ Remettre en ligne':'✅ Marquer terminé'}</button></div>`
+    : (l.sold
+       ? `<div class="info" style="text-align:center">✅ Ce service n'est plus proposé par le prestataire.</div>
+          <div class="row" style="gap:8px;margin-top:8px"><button class="btn ghost" style="flex:1" onclick="shareListing('${l.id}')">📤 Partager</button>
+          <button class="btn ghost" style="flex:0 0 54px;font-size:19px" onclick="curUser?toggleFav('${l.id}',true):favCta()">${myFavs.has(l.id)?'❤️':'🤍'}</button></div>`
+       : `<div class="row" style="gap:8px;margin-top:8px">
+            <button class="btn g" style="flex:1" onclick="curUser?openChatFromListing('${l.id}'):openAuth('sell')">💬 Demander ce service</button>
+            <button class="btn ghost" style="flex:0 0 54px;font-size:19px" onclick="curUser?toggleFav('${l.id}',true):favCta()">${myFavs.has(l.id)?'❤️':'🤍'}</button></div>
+          <a id="detWa" class="btn ghost" style="margin-top:8px;display:none;text-decoration:none" target="_blank" rel="noopener">🟢 Contacter sur WhatsApp</a>
+          <div class="info" style="text-align:center">💡 Discute d'abord avec le prestataire, puis paye en confiance à la remise du travail — jamais d'avance.</div>`);
+  openModal(`<div style="position:sticky;top:0;background:#fff;padding:10px 14px;display:flex;justify-content:space-between;border-bottom:1px solid var(--line)"><span>${ty.e} Service · ${ty.n}</span><span style="cursor:pointer;font-size:20px" onclick="closeAll()">✕</span></div>
+   ${img}<div class="cardp">
+   <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap"><span class="badge-chip" style="background:var(--org-soft);color:var(--org);border:1px solid var(--org-line, rgba(255,130,31,.3))">✨ Prestataire</span></div>
+   <h2 style="margin:6px 0 2px">${esc(l.t)}</h2>
+   <div class="muted">📍 ${esc(l.city||'')}, Côte d'Ivoire${l.svcZone?(' · déplacement : '+esc(l.svcZone)):''} · ${timeago(l.time)}</div>
+   <div style="font-size:23px;font-weight:900;color:var(--org);margin:8px 0 4px">${svcPriceTxt(l)}</div>
+   <div class="box"><b>Ce que je propose</b><p class="muted" style="margin:5px 0 0;font-size:13px">${esc(l.d||'')}</p></div>
+   <div class="box" style="display:flex;gap:10px;align-items:center;cursor:pointer" onclick="closeAll();openSeller('${l.sellerId}')"><div class="av">🛠️</div><div class="grow" id="detSeller"><span class="muted">…</span></div></div>
+   ${provAct}
+   </div>`);
+  loadDetSeller(l.sellerId);
+  loadDetWa(l.sellerId);
+}
+async function toggleSoldSvc(id){ const d=await db.collection('listings').doc(id).get(); if(!d.exists)return;
+  const now=!d.data().sold; await d.ref.update({sold:now});
+  toast(now?'✅ Service marqué terminé':'↩️ Service remis en ligne'); closeAll(); view='sell';shell(); }
 // ===== Partage WhatsApp + lien d'annonce =====
 function listingURL(id){return location.origin+location.pathname+'?a='+id;}
 function waUrl(id){const l=allListings.find(x=>x.id===id);if(!l)return'';const url=listingURL(id);
-  const txt=`${l.t} - ${fmt(l.p)} FCFA (${l.cond||''}), ${l.city||'Abidjan'}, Côte d'Ivoire 🇨🇮\n\nVoir l'annonce sur Hametkro : ${url}\n\n🔒 Achat sécurisé, ne paie jamais d'avance.`;
+  const kind=isSvc(l)?'service':'annonce';
+  const priceLbl=isSvc(l)?('Tarif : '+svcPriceTxt(l)):(fmt(l.p)+' FCFA ('+(l.cond||'')+')');
+  const tail=isSvc(l)?'📲 Contacte le prestataire sur Hametkro.':"🔒 Achat sécurisé, ne paie jamais d'avance.";
+  const txt=`${l.t} - ${priceLbl}, ${l.city||'Abidjan'}, Côte d'Ivoire 🇨🇮\n\nVoir le ${kind} sur Hametkro : ${url}\n\n${tail}`;
   return 'https://wa.me/?text='+encodeURIComponent(txt);}
 function shareListing(id){const l=allListings.find(x=>x.id===id);if(!l)return;
   openSheet(`<div class="row" style="justify-content:space-between;padding:12px 0"><b>📤 Partager l'annonce</b><span style="cursor:pointer;font-size:20px" onclick="closeAll()">✕</span></div>
-   <div class="card" style="display:flex;gap:12px;align-items:center;padding:10px;margin:4px 0 12px"><img src="${esc(firstImg(l))}" style="width:64px;height:64px;object-fit:cover;border-radius:12px"><div class="grow"><b>${esc(l.t)}</b><div style="color:var(--grn);font-weight:800">${fmt(l.p)} FCFA</div></div></div>
+   <div class="card" style="display:flex;gap:12px;align-items:center;padding:10px;margin:4px 0 12px">${l.photos&&l.photos.length?`<img src="${esc(firstImg(l))}" style="width:64px;height:64px;object-fit:cover;border-radius:12px">`:''}<div class="grow"><b>${esc(l.t)}</b><div style="color:${isSvc(l)?'var(--org)':'var(--grn)'};font-weight:800">${isSvc(l)?svcPriceTxt(l):(fmt(l.p)+' FCFA')}</div></div></div>
    <a class="btn g" style="text-decoration:none;text-align:center" href="${waUrl(id)}" target="_blank" rel="noopener">🟢 Partager sur WhatsApp</a>
    <div style="height:8px"></div>
    <button class="btn ghost" onclick="copyListingLink('${id}')">🔗 Copier le lien de l'annonce</button>
@@ -1076,7 +1152,13 @@ function sellV(){if(!curProfile)return `<div class="center cardp" style="padding
  let tabs=`<div class="hdr"><h2>Mes annonces</h2><span class="badge" style="margin-left:8px">${onSale} en vente</span></div>
   <div class="statbox"><div class="st"><b>${mine.length}</b><span>publiées</span></div><div class="st"><b>${mine.filter(l=>l.sold).length}</b><span>vendues</span></div><div class="st"><b>${buyTx.length+sellTx.length}</b><span>transactions</span></div></div>
   ${sellerActionChip()}
-  <div style="padding:0 12px"><button class="btn g" onclick="sellSheet()">➕ Publier un article</button></div>
+  <div style="padding:0 12px"><div class="box" style="border-left:4px solid var(--org);padding:12px;background:var(--org-soft)">
+    <b style="font-size:13px">✨ Tu as un talent ou un service à proposer ?</b>
+    <div class="row" style="gap:8px;margin-top:8px">
+      <button class="btn g" style="flex:1" onclick="sellSheet()">📦 Vendre un article</button>
+      <button class="btn" style="flex:1" onclick="svcSheet()">🛠 Proposer un service</button>
+    </div>
+  </div></div>
   <div style="padding:10px 12px">${mine.length?mine.map(tile).join(''):'<p class="muted center">Aucune annonce publiée.</p>'}</div>
   <div style="padding:6px 12px"><h3 style="margin:8px 0">Transactions sécurisées</h3>${txCache.filter(t=>t.buyerId===curProfile.uid||t.sellerId===curProfile.uid).length?txCache.filter(t=>t.buyerId===curProfile.uid||t.sellerId===curProfile.uid).map(txCard).join(''):'<p class="muted">Contacte un vendeur pour lancer une transaction sécurisée.</p>'}</div>`;
  return tabs;}
@@ -1124,6 +1206,40 @@ async function publish(pid){let t=val(pid+'_t').trim(),p=parseMoney(val(pid+'_p'
  let doc=db.collection('listings').doc();let now=Date.now();
  await doc.set({id:doc.id,cat:document.getElementById(pid+'_cat').value,t,p,city,cond:document.getElementById(pid+'_cond').value,size:'',d,photos,sellerId:curProfile.uid,sellerName:curProfile.name,sellerWa:curProfile.wa||'',sold:false,time:now,createdAt:now,views:0});
  closeAll();delete pendingPhotos[pid];toast('🎉 Publié !');view='sell';shell();}catch(e){toast('❌ Erreur: '+e.message)}}
+
+// --- Proposer un service (Bende) ---
+function svcSheet(){ if(!curProfile) return openAuth();
+  const pid='s'+uidr();
+  openSheet(`<div style="padding:12px 0 4px"><div class="row" style="justify-content:space-between"><h2 style="margin:0">🛠 Proposer un service</h2><span style="cursor:pointer;font-size:20px" onclick="closeAll()">✕</span></div>
+   <p class="muted" style="margin:2px 0 6px">Propose ton savoir-faire : cours, livraison, coiffure, couture, photo, informatique… Gagne de l'argent sans capital.</p>
+   <label>Type de service</label><div class="row" style="gap:6px;flex-wrap:wrap">${SVCS.map(c=>`<span class="catpill ${c.id==='cours'?'on':''}" data-svc="${c.id}" onclick="svcSetType(this)">${c.e} ${c.n}</span>`).join('')}</div>
+   <input type="hidden" id="${pid}_svcType" value="cours">
+   <label>Titre *</label><input id="${pid}_t" class="input" placeholder="Ex : Cours d'anglais à domicile / Je livre tes courses">
+   <label>Décris ton service *</label><textarea id="${pid}_d" class="input" rows="3" placeholder="Ce que tu proposes, ton expérience, ta zone…"></textarea>
+   <div class="row" style="align-items:flex-start"><div class="grow"><label>Tarif de base (FCFA, optionnel)</label><input id="${pid}_p" class="input" type="text" inputmode="numeric" placeholder="Laisse vide si à discuter" autocomplete="off" oninput="moneyFmt(this)"></div><div style="width:112px"><label>Ville</label><input id="${pid}_c" class="input" value="${esc(curProfile.city||'Abidjan')}"></div></div>
+   <label>Unité du tarif</label><div class="row" style="gap:6px;flex-wrap:wrap">${SVC_UNITS.map(u=>`<span class="catpill ${u[0]==='forfait'?'on':''}" data-u="${u[0]}" onclick="svcSetUnit(this)">${u[1]}</span>`).join('')}</div><input type="hidden" id="${pid}_svcUnit" value="forfait">
+   <label>Zone de déplacement (ex : Cocody → Plateau)</label><input id="${pid}_svcZone" class="input" placeholder="Ex : Cocody & Riviera">
+   <label>Photo (optionnel)</label><div class="thumbs" id="${pid}_th"><div class="addPhoto" onclick="document.getElementById('${pid}_file').click()">📷<br>Ajouter</div></div>
+   <input type="file" id="${pid}_file" accept="image/*" multiple style="display:none" onchange="addPhotos('${pid}',this)">
+   <div class="info">💡 Sois clair sur le tarif et la zone. Le client te contacte d'abord, et se paie en confiance <b>après la prestation</b> (transaction sécurisée).</div>
+   <button class="btn g" onclick="publishSvc('${pid}')">Publier mon service 🎉</button>`);
+  curSheetId=pid; }
+function svcSetType(el){const pid=curSheetId; if(!pid)return; el.closest('.row').querySelectorAll('.catpill').forEach(x=>x.classList.remove('on')); el.classList.add('on'); const inp=document.getElementById(pid+'_svcType'); if(inp)inp.value=el.dataset.svc; }
+function svcSetUnit(el){const pid=curSheetId; if(!pid)return; el.closest('.row').querySelectorAll('.catpill').forEach(x=>x.classList.remove('on')); el.classList.add('on'); const inp=document.getElementById(pid+'_svcUnit'); if(inp)inp.value=el.dataset.u; }
+async function publishSvc(pid){ const t=val(pid+'_t').trim(), d=val(pid+'_d').trim();
+  if(t.length<3) return toast('Titre requis'); if(d.length<10) return toast('Décris un peu ton service (min 10 caractères)');
+  const p=parseMoney(val(pid+'_p')); const city=val(pid+'_c')||curProfile.city||'Abidjan';
+  const svcType=document.getElementById(pid+'_svcType')?val(pid+'_svcType'):'cours';
+  const svcUnit=document.getElementById(pid+'_svcUnit')?val(pid+'_svcUnit'):'forfait';
+  const svcZone=(val(pid+'_svcZone')||'').trim();
+  const photos=pendingPhotos[pid]||[];
+  try{
+    const doc=db.collection('listings').doc(); const now=Date.now();
+    await doc.set({id:doc.id,svc:true,cat:'svc',svcType,svcUnit,svcZone,t,p:parseInt(p,10)||0,city,cond:'',size:'',d,photos,
+      sellerId:curProfile.uid,sellerName:curProfile.name,sellerWa:curProfile.wa||'',sold:false,time:now,createdAt:now,views:0});
+    closeAll(); delete pendingPhotos[pid]; toast('🎉 Service publié !'); view='sell'; shell();
+  }catch(e){ toast('❌ Erreur: '+(e&&e.message||'envoi impossible')); }
+}
 
 /* ============== MESSAGERIE (chat acheteur/vendeur) ============== */
 // Le chat est stocké dans la collection `conversations`. Les messages vivent
@@ -1593,7 +1709,7 @@ async function saveWa(){ if(!curProfile)return; const v=document.getElementById(
 async function loadDetWa(sid){ try{ const seller=await getSeller(sid);
   const ph=(seller&&(seller.wa||seller.phone))||''; const el=document.getElementById('detWa'); if(!el)return;
   const clean=String(ph).replace(/[^0-9]/g,''); if(clean.length<8){ el.style.display='none'; return; }
-  el.style.display=''; el.href='https://wa.me/'+clean+'?text='+encodeURIComponent('Bonjour, je suis intéressé par votre article sur Hametkro. Est-il toujours disponible ?'); }catch(e){} }
+  el.style.display=''; el.href='https://wa.me/'+clean+'?text='+encodeURIComponent('Bonjour, je vous contacte via Hametkro au sujet de votre annonce. Est-elle toujours disponible ?'); }catch(e){} }
 async function logout(){try{await auth.signOut();}catch(_){}stopPresence();view='home';shell();}
 function adminTab(id,ic,label){return `<div style="flex:1;text-align:center;padding:9px 2px;cursor:pointer;border-radius:12px;font-size:11px;font-weight:700;white-space:nowrap;${_admTab===id?'background:#fff;color:var(--grn);box-shadow:0 3px 10px -6px rgba(0,0,0,.3)':'color:rgba(255,255,255,.85)'}" onclick="_admTab='${id}';shell()">${ic}<br><span style="font-size:9.5px">${label}</span></div>`;}
 function adminPanelWrap(headHtml,bodyHtml){return `<div style="background:#fff;border:1px solid var(--line);border-radius:16px;padding:14px;margin-top:12px;box-shadow:var(--sh-s)"><div class="row" style="justify-content:space-between;margin-bottom:8px">${headHtml}</div>${bodyHtml}</div>`;}
