@@ -737,6 +737,7 @@ function actRow(){
   const canSave = (catF!=='all'||q||cityF!=='all');
   return `<div style="display:flex;gap:8px;align-items:center;padding:8px 14px 0;overflow-x:auto">
     <div class="chip" style="flex:none;background:${myFavs.size?'#fff7ea':''}" onclick="favSheet()">❤️ Ma liste${myFavs.size?` <b style="color:var(--org)">(${myFavs.size})</b>`:''}</div>
+    ${curProfile?`<div class="chip" style="flex:none;background:#fff6dd" onclick="inviteSheet()">🎁 Inviter <b style="color:#a87b12">+${COIN_REFERRER}🪙</b></div>`:''}
     ${myAlerts.length?`<div class="chip" style="flex:none" onclick="view='me';shell()">🔔 ${myAlerts.length} alerte${myAlerts.length>1?'s':''}${alertTotal?` <b style="color:var(--sang)">· ${alertTotal} nouveau${alertTotal>1?'x':''}</b>`:''}</div>`:''}
     ${canSave?`<div class="chip" style="flex:none;background:var(--grn-soft);color:var(--grn-d);font-weight:800" onclick="saveSearchSheet()">🔔 Activer une alerte</div>`:''}
   </div>`; }
@@ -924,9 +925,31 @@ function listingAgeChip(l){ const d=listingDays(l);
   return '<span class="warn" style="padding:4px 9px;font-size:10px;margin:0">⚠️ '+(d>45?'annonce ancienne':'publié il y a '+d+' j')+'</span>'; }
 async function bumpListing(id){ const d=await db.collection('listings').doc(id).get(); if(!d.exists)return;
   const key='ham_bump_'+id; const last=parseInt(localStorage.getItem(key)||'0',10);
-  const wait=2*3600*1000; if(Date.now()-last<wait){ const m=Math.ceil((wait-(Date.now()-last))/60000); return toast('⏳ Réessaie dans '+m+' min (anti-spam)'); }
+  const wait=2*3600*1000; const left=wait-(Date.now()-last);
+  if(left>0){
+    // Attente anti-spam en cours : proposer d'utiliser 1 pièce pour remonter tout de suite.
+    const m=Math.ceil(left/60000);
+    if(myCoins()>0){ openSheet(`<div class="row" style="justify-content:space-between;padding:12px 0"><b>⚡ Remonter maintenant</b><span style="cursor:pointer;font-size:20px" onclick="closeAll()">✕</span></div>
+      <div class="box" style="text-align:center">L'attente anti-spam n'est pas terminée (encore <b>~${m} min</b>).<br><br>Utiliser <b>1 🪙</b> pour remonter cette annonce tout de suite ?<br><span class="muted">Tu as ${myCoins()} 🪙.</span></div>
+      <div class="row" style="gap:8px"><button class="btn ghost" style="flex:1" onclick="closeAll()">Non, attendre</button><button class="btn g" style="flex:1" onclick="bumpWithCoin('${id}')">⚡ Oui (1 🪙)</button></div>`);
+    } else toast('⏳ Réessaie dans '+m+' min (anti-spam) — ou invite des amis pour gagner des 🪙 qui débloquent tout de suite.');
+    return;
+  }
+  await _bumpGo(id); }
+async function bumpWithCoin(id){ if(!curProfile)return;
+  if(myCoins()<COIN_COST_BUMP) return toast('Pas assez de 🪙. Invite des ami(e)s pour en gagner.');
   try{
-    await d.ref.update({time:Date.now(),createdAt:Date.now()}); localStorage.setItem(key,String(Date.now()));
+    await db.collection('users').doc(curProfile.uid).update({coins:firebase.firestore.FieldValue.increment(-COIN_COST_BUMP)});
+    curProfile={...curProfile,coins:myCoins()-COIN_COST_BUMP};
+    closeAll();
+    const d=await db.collection('listings').doc(id).get(); if(!d.exists)return toast('Article introuvable');
+    await d.ref.update({time:Date.now(),createdAt:Date.now()});
+    localStorage.setItem('ham_bump_'+id,String(Date.now()));
+    toast('⚡ Remise en avant (1 🪙) 🔥'); view='sell';shell();
+  }catch(e){ console.error('BUMPCOIN',e&&e.message); toast('❌ '+(e&&e.message||'erreur')); } }
+async function _bumpGo(id){ const d=await db.collection('listings').doc(id).get(); if(!d.exists)return;
+  try{
+    await d.ref.update({time:Date.now(),createdAt:Date.now()}); localStorage.setItem('ham_bump_'+id,String(Date.now()));
     toast('↻ Remise en avant 🔥'); closeAll(); view='sell';shell();
   }catch(e){ toast('❌ '+(e&&e.message||'erreur')); } }
 async function toggleSoldMine(id){ const d=await db.collection('listings').doc(id).get(); if(!d.exists)return;
@@ -1330,15 +1353,64 @@ async function resetPw(){ const e=val('rp_email').trim().toLowerCase(); if(!e||!
   catch(err){ const code=err.code||''; if(code==='auth/user-not-found'||code==='auth/invalid-email'){ toast('❌ Aucun compte associé à cet e-mail dans ce projet.'); }
     else if(code==='auth/too-many-requests'){ toast('⏳ Trop de demandes, réessaie dans quelques minutes'); }
     else toast('❌ '+(err.message||'erreur')); } }
+/* ============== PARRAINAGE & PIÈCES 🪙 (Communauté / viralité) ==============
+ * Chaque membre a un code d'invitation personnel. Un(e) ami(e) qui s'inscrit
+ * avec ce lien donne 2 🪙 au parrain (et reçoit un bonus d'accueil). Les pièces
+ * s'utilisent pour « Remettre en avant » une annonce immédiatement (sans
+ * attendre l'attente anti-spam de 2 h de la mise en avant gratuite). */
+const COIN_WELCOME=3, COIN_REFERRER=2, COIN_GIFT=2, COIN_COST_BUMP=1;
+function myCoins(){ return curProfile? (parseInt(curProfile.coins,10)||0) : 0; }
+function coinsBadge(){ return myCoins()>0?` <span style="background:linear-gradient(135deg,#E8B93A,#F4C948);color:#5a4308;border-radius:999px;padding:1px 8px;font-size:10px;font-weight:800">🪙 ${myCoins()}</span>`:''; }
+async function ensureInvCode(){ if(curProfile&&curProfile.inv) return curProfile.inv;
+  if(!curProfile) return '';
+  const chars='ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; let code='';
+  for(let i=0;i<6;i++) code+=chars[Math.floor(Math.random()*chars.length)];
+  try{ await db.collection('users').doc(curProfile.uid).update({inv:code}); curProfile={...curProfile,inv:code}; }
+  catch(e){ console.warn('INVCODE',e&&e.code); }
+  return code; }
+function inviteURL(){ const c=(curProfile&&curProfile.inv)||''; return location.origin+location.pathname+'?inv='+encodeURIComponent(c); }
+function inviteSheet(){ if(!curProfile) return openAuth();
+  ensureInvCode().then(code=>{
+    const url=inviteURL(); const wa='https://wa.me/?text='+encodeURIComponent('Rejoins-moi sur hametkro 🇨🇮 le marché de confiance ! On gagne 2 🪙 chacune quand tu t\u2019inscris avec mon lien : '+url);
+    openSheet(`<div class="row" style="justify-content:space-between;padding:12px 0"><b>🎁 Invite & gagne</b><span style="cursor:pointer;font-size:20px" onclick="closeAll()">✕</span></div>
+     <div class="box" style="border-left:4px solid #E8B93A;background:linear-gradient(135deg,#FFF7DF,#FFF3D6)"><div style="font-size:38px;text-align:center">🎁🪙</div>
+       <p class="muted" style="text-align:center;margin:4px 0">Tu as <b>🪙 ${myCoins()}</b>.</p>
+       <p style="font-size:13px;margin:0;line-height:1.5">Invite des ami(e)s : <b>+${COIN_REFERRER} 🪙</b> par inscription via ton lien. L'ami(e) reçoit aussi un bonus d'accueil <b>+${COIN_GIFT} 🪙</b>. Tes pièces te permettent de <b>remonter une annonce en haut du fil instantanément</b> (1 🪙).</p></div>
+     <div class="qr" onclick="copyInvite()">Mon code : <b style="color:var(--org)">${esc(code)}</b><span class="muted"> · toucher pour copier</span></div>
+     <a class="btn g" style="text-decoration:none;text-align:center" href="${wa}" target="_blank" rel="noopener">🟢 Envoyer mon invitation sur WhatsApp</a>
+     <div style="height:8px"></div>
+     <button class="btn ghost" onclick="copyInvite()">🔗 Copier le lien d'invitation</button>
+     <p class="muted" style="text-align:center;margin-top:10px">${esc(location.origin+location.pathname+'?inv='+code)}</p>`);
+  }); }
+async function copyInvite(){ const url=inviteURL();
+  try{ await navigator.clipboard.writeText(url); toast('🔗 Lien d\'invitation copié !'); }
+  catch(e){ prompt('Copie ce lien :',url); } }
+/* Rémunération du parrain à l'inscription d'un nouvel ami (code dans l'URL). */
+async function applyReferral(uid){ try{
+  const p=new URLSearchParams(location.search); const code=(p.get('inv')||'').toUpperCase();
+  if(!code) return;
+  const q=await db.collection('users').where('inv','==',code).limit(1).get();
+  if(q.empty) return;
+  const rid=q.docs[0].id; if(!rid||rid===uid) return;
+  const fv=firebase.firestore.FieldValue;
+  // l'ami qui vient via un lien garde la trace + petit bonus en plus de l'accueil
+  await db.collection('users').doc(uid).update({byRef:rid, coins:fv.increment(COIN_GIFT)});
+  // le parrain est crédité (doc distant)
+  await db.collection('users').doc(rid).update({coins:fv.increment(COIN_REFERRER)});
+  if(curProfile && curProfile.uid===uid) curProfile={...curProfile,coins:myCoins()+COIN_GIFT,byRef:rid};
+  const d=await db.collection('users').doc(uid).get(); if(d.exists){ curProfile=d.data(); }
+  toast('🎁 Bienvenue via un parrain : +'+COIN_GIFT+' 🪙 bonus');
+ }catch(e){ console.warn('REFERRAL',e&&e.code); } }
 async function doRegister(){let n=val('rn'),e=val('re'),p=val('rp'),city=val('rc')||'Abidjan';
  if(n.length<2)return toast('Entre ton nom');if(!/^\S+@\S+\.\S+$/.test(e))return toast('Email invalide');if(p.length<6)return toast('Mot de passe min 6');
  try{
   const cred=await auth.createUserWithEmailAndPassword(e,p);const uid=cred.user.uid;
   // 1er compte sur projet vide => admin (paramétrage initial)
   let isFirst=false;try{let c=await db.collection('users').get();isFirst=(c.size===0);}catch(_){}
-  await db.collection('users').doc(uid).set({uid,name:n,email:e.toLowerCase(),city,country:"Côte d'Ivoire",countryCode:'CI',created:Date.now(),role:isFirst?'admin':'member'});
+  await db.collection('users').doc(uid).set({uid,name:n,email:e.toLowerCase(),city,country:"Côte d'Ivoire",countryCode:'CI',created:Date.now(),role:isFirst?'admin':'member',coins:COIN_WELCOME});
   await refreshMe(); // recharge le profil DÈS que le doc existe (évite de rester sur la page de connexion)
-  toast(isFirst?'🎉 Compte créé — tu es ADMIN (1er utilisateur)':'🎉 Compte créé');closeAll();view='home';shell(); maybeOnboard();
+  if(!isFirst) await applyReferral(uid); // + bonus si venue via un lien de parrainage
+  toast(isFirst?'🎉 Compte créé — tu es ADMIN (1er utilisateur)':'🎉 Compte créé'+(isFirst?'':' — +'+COIN_WELCOME+' 🪙 bienvenue'));closeAll();view='home';shell(); maybeOnboard();
  }catch(err){toast('❌ '+(err.code==='auth/email-already-in-use'?'Cet email existe déjà':err.code));}}
 
 /* ============== SELL ============== */
@@ -1943,6 +2015,7 @@ function profileV(){if(!curProfile)return `<div class="center cardp" style="padd
   ${curProfile.bio?`<div class="box"><b>📝 À propos</b><p class="muted" style="margin:4px 0">${esc(curProfile.bio)}</p></div>`:''}
   <div class="box"><b>📍 Marché</b><p class="muted">${esc(curProfile.country||'')} · ${esc(curProfile.city||'')}</p></div>
   <div class="box"><b>❤️ Ma liste (${myFavs.size})</b><p class="muted" style="margin-bottom:8px">Les articles que tu gardes pour plus tard.</p>${favListHtml()}<div style="height:4px"></div><button class="btn ghost sm" onclick="view='home';shell()">Parcourir & ajouter</button></div>
+  <div class="box" style="display:flex;gap:10px;align-items:center;border-left:4px solid #E8B93A;background:linear-gradient(135deg,#FFF9E8,#FFF2D3)"><div class="grow"><b>🎁 Invite & gagne 🪙 ${myCoins()}</b><p class="muted" style="margin:2px 0">Partage ton lien : +2 🪙 par ami(e) inscrit(e), à utiliser pour remonter une annonce tout de suite.</p></div><button class="btn g sm" onclick="inviteSheet()">Inviter</button></div>
   <div class="box"><b>🔔 Mes alertes (${myAlerts.length})</b><p class="muted" style="margin-bottom:8px">Préviens-moi des nouvelles annonces selon mes critères.</p>${alertsHtml()}<div style="height:4px"></div><button class="btn g sm" onclick="view='home';shell()">Activer une nouvelle alerte</button></div>
   <div class="box"><b>📱 WhatsApp / téléphone</b><p class="muted">En cas d'achat, les intéressés pourront te joindre directement sur WhatsApp.</p>
     <div style="display:flex;gap:8px;align-items:center"><input id="profWa" class="input" style="margin:0;flex:1" value="${esc(curProfile.wa||'')}" placeholder="Ex : +225 07 00 00 00 00" inputmode="tel"><button class="btn g sm" onclick="saveWa()">Enregistrer</button></div></div>
