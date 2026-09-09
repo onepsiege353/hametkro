@@ -1827,7 +1827,9 @@ function txCard(t){let u=curProfile;let isBuyer=t.buyerId===u.uid;let isSeller=t
  }
  if(t.status==='done'){ act=`<div class="info">✅ Terminée — commission ${fmt(t.commission)} FCFA.</div>`;
    if(isBuyer && !reviewedTx(t.id)) act+=`<button class="btn gold sm" style="margin-top:6px" onclick="reviewSellerSheet('${t.id}')">⭐ Noter le vendeur & laisser un avis</button>`;
-   else if(isBuyer && reviewedTx(t.id)) act+=`<div class="muted" style="margin-top:6px;font-size:11px">⭐ Tu as déjà noté ce vendeur. Merci !</div>`; }
+   else if(isBuyer && reviewedTx(t.id)) act+=`<div class="muted" style="margin-top:6px;font-size:11px">⭐ Tu as déjà noté ce vendeur. Merci !</div>`;
+   else if(isSeller && !reviewedTx(t.id)) act+=`<button class="btn ghost sm" style="margin-top:6px" onclick="reviewBuyerSheet('${t.id}')">⭐ Noter l'acheteur</button>`;
+   else if(isSeller && reviewedTx(t.id)) act+=`<div class="muted" style="margin-top:6px;font-size:11px">⭐ Tu as déjà noté cet acheteur. Merci !</div>`; }
 
  if(t.status==='dispute')act=`<div class="warn">⚠️ Litige — l'admin va arbitrer.</div>`;
  return `<div class="box" style="border-left:4px solid var(--grn)"><div class="row"><b class="grow">${esc(t.itemTitle)}</b><span class="muted">${fmt(t.price)} FCFA</span></div>
@@ -1857,7 +1859,7 @@ function starRow(n){ return '⭐'.repeat(Math.max(0,Math.min(5,n)))+'☆'.repeat
 function reviewSellerSheet(txId){ if(!curProfile) return openAuth();
   const tx=(txCache||[]).find(x=>x.id===txId); if(!tx) return toast('Transaction introuvable');
   if(tx.buyerId!==curProfile.uid) return toast('Seul l\'acheteur peut noter ce vendeur');
-  window._rateStars=5; window._revTxId=txId;
+  window._revSide='seller'; window._revSide='seller'; window._rateStars=5; window._revTxId=txId;
   openSheet(`<div class="row" style="justify-content:space-between;padding:12px 0"><h2 style="margin:0;font-size:18px">⭐ Noter ${esc(tx.sellerName)}</h2><span style="cursor:pointer;font-size:20px" onclick="closeAll()">✕</span></div>
    <div class="muted" style="margin:2px 0 6px">Après « ${esc(tx.itemTitle)} » · ${fmt(tx.price)} FCFA</div>
    <label>Ta note</label>
@@ -1866,12 +1868,26 @@ function reviewSellerSheet(txId){ if(!curProfile) return openAuth();
    <label style="margin-top:10px">Commentaire (optionnel)</label><textarea id="rev_c" class="input" rows="3" placeholder="Remise rapide, article conforme, vendeur honnête…"></textarea>
    <button class="btn g" onclick="reviewSubmit()">Publier mon avis</button>`); }
 function setRate(n){ window._rateStars=n; const el=document.getElementById('rev_stars'); if(el) el.innerHTML=[1,2,3,4,5].map(i=>`<span style="cursor:pointer" onclick="setRate(${i})">${i<=n?'⭐':'☆'}</span>`).join(''); }
+// Avis RÉCIPROQUE : le vendeur peut aussi noter l'acheteur après une transaction clôturée.
+function reviewBuyerSheet(txId){ if(!curProfile) return openAuth();
+  const tx=(txCache||[]).find(x=>x.id===txId); if(!tx) return toast('Transaction introuvable');
+  if(tx.sellerId!==curProfile.uid) return toast('Seul le vendeur peut noter cet acheteur');
+  window._revSide='buyer'; window._rateStars=5; window._revTxId=txId;
+  openSheet(`<div class="row" style="justify-content:space-between;padding:12px 0"><h2 style="margin:0;font-size:18px">⭐ Noter ${esc(tx.buyerName)} (acheteur)</h2><span style="cursor:pointer;font-size:20px" onclick="closeAll()">✕</span></div>
+   <div class="muted" style="margin:2px 0 6px">Après « ${esc(tx.itemTitle)} » · ${fmt(tx.price)} FCFA</div>
+   <label>Ta note</label>
+   <div id="rev_stars" style="font-size:34px;letter-spacing:2px;margin:6px 0 2px">${[1,2,3,4,5].map(i=>`<span style="cursor:pointer" onclick="setRate(${i})">⭐</span>`).join('')}</div>
+   <div class="muted" style="font-size:11px">1 = très mauvaise expérience · 5 = excellent acheteur</div>
+   <label style="margin-top:10px">Commentaire (optionnel)</label><textarea id="rev_c" class="input" rows="3" placeholder="Paiement rapide, remise ponctuelle, sérieux…"></textarea>
+   <button class="btn g" onclick="reviewSubmit()">Publier mon avis</button>`); }
 async function reviewSubmit(){ if(!curProfile) return; const txId=window._revTxId; if(!txId) return;
   const tx=(txCache||[]).find(x=>x.id===txId); if(!tx) return toast('Transaction introuvable');
-  const rating=window._rateStars||5; const comment=(val('rev_c')||'').trim();
+  const rating=window._rateStars||5; const comment=(val('rev_c')||'').trim(); const side=window._revSide==='buyer'?'buyer':'seller';
+  const isSellerRev = side==='seller';
   try{
-    await db.collection('reviews').add({kind:'seller',txId:tx.id,sellerId:tx.sellerId,sellerName:tx.sellerName,
-      authorId:curProfile.uid,authorName:curProfile.name,rating,comment,createdAt:Date.now()});
+    await db.collection('reviews').add(isSellerRev
+      ? {kind:'seller',txId:tx.id,sellerId:tx.sellerId,sellerName:tx.sellerName,authorId:curProfile.uid,authorName:curProfile.name,rating,comment,createdAt:Date.now()}
+      : {kind:'buyer',txId:tx.id,buyerId:tx.buyerId,buyerName:tx.buyerName,authorId:curProfile.uid,authorName:curProfile.name,rating,comment,createdAt:Date.now()});
     myRevTx.add(tx.id); closeAll(); toast('⭐ Merci, ton avis est publié !'); view='sell';shell();
   }catch(e){ console.error('REVIEW',e&&e.code,e&&e.message); toast('❌ '+(e&&e.message||'erreur')); } }
 
