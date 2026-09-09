@@ -1273,7 +1273,7 @@ function openAuthForm(login){openModal(`<div>
     <p>${login?'Connecte-toi pour gérer tes annonces, discussions et commandes.':'Gratuit, 30 secondes. Tu es 100% chez toi.'}</p>
   </div>
   <div style="padding:22px 20px 34px">
-    ${login?`<label>Adresse e-mail</label><input id="le" class="input" type="email" placeholder="toi@exemple.ci"><label>Mot de passe</label><input id="lp" class="input" type="password" placeholder="••••••••"><button class="btn g" onclick="doLogin()">Se connecter</button>`
+    ${login?`<label>Adresse e-mail</label><input id="le" class="input" type="email" placeholder="toi@exemple.ci"><label>Mot de passe</label><input id="lp" class="input" type="password" placeholder="••••••••"><button class="btn g" onclick="doLogin()">Se connecter</button><div class="muted center" style="margin-top:10px;font-size:12px"><a style="cursor:pointer;font-weight:700" onclick="resetPwSheet()">Mot de passe oublié ?</a></div>`
     :`<label>Nom complet</label><input id="rn" class="input" placeholder="Ex : Aya Kouassi"><label>Adresse e-mail</label><input id="re" class="input" type="email" placeholder="toi@exemple.ci"><label>Ville</label><input id="rc" class="input" value="Abidjan"><label>Mot de passe (6 caractères min)</label><input id="rp" class="input" type="password" placeholder="••••••••"><div style="height:6px"></div><button class="btn g" onclick="doRegister()">Créer mon compte</button>`}
     <p class="muted center" style="margin-top:18px">← <a onclick="openAuth()">retour</a></p>
   </div></div>`);}
@@ -1284,7 +1284,16 @@ async function doLogin(){let e=val('le'),p=val('lp');if(!e||!p)return toast('Rem
   await refreshMe(); // garantit le chargement du profil avant l'affichage
   toast('Bienvenue 👋');closeAll();view='home';shell(); maybeOnboard();
  }
- catch(err){toast('❌ '+(err.code==='auth/user-not-found'||err.code==='auth/wrong-password'?'Email ou mot de passe incorrect':(err.code==='auth/user-disabled'?'Compte désactivé':err.code)));}}
+ catch(err){toast('❌ '+((err.code==='auth/user-not-found'||err.code==='auth/wrong-password'||err.code==='auth/invalid-login-credentials')?'Email ou mot de passe incorrect — vérifie puis réessaie, ou utilise « Mot de passe oublié ».':(err.code==='auth/user-disabled'?'Compte désactivé':err.code)));}}
+function resetPwSheet(){ openSheet(`<div class="row" style="justify-content:space-between;padding:12px 0"><b>🔑 Mot de passe oublié</b><span style="cursor:pointer;font-size:20px" onclick="closeAll()">✕</span></div>
+  <p class="muted" style="font-size:13px;margin:0 0 8px">Entre l'e-mail de ton compte. Tu recevras un lien pour choisir un nouveau mot de passe.</p>
+  <label>Adresse e-mail</label><input id="rp_email" class="input" type="email" placeholder="toi@exemple.ci">
+  <div style="height:8px"></div><button class="btn g" onclick="resetPw()">Envoyer le lien</button>`); }
+async function resetPw(){ const e=val('rp_email').trim().toLowerCase(); if(!e||!/^\\S+@\\S+\\.\\S+$/.test(e))return toast('Email invalide');
+  try{ await auth.sendPasswordResetEmail(e); closeAll(); toast("📧 Si ce compte existe, un lien vient d'être envoyé."); }
+  catch(err){ const code=err.code||''; if(code==='auth/user-not-found'||code==='auth/invalid-email'){ toast('❌ Aucun compte associé à cet e-mail dans ce projet.'); }
+    else if(code==='auth/too-many-requests'){ toast('⏳ Trop de demandes, réessaie dans quelques minutes'); }
+    else toast('❌ '+(err.message||'erreur')); } }
 async function doRegister(){let n=val('rn'),e=val('re'),p=val('rp'),city=val('rc')||'Abidjan';
  if(n.length<2)return toast('Entre ton nom');if(!/^\S+@\S+\.\S+$/.test(e))return toast('Email invalide');if(p.length<6)return toast('Mot de passe min 6');
  try{
