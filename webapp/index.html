@@ -958,6 +958,8 @@ function gbSetupSheet(id){ const l=allListings.find(x=>x.id===id); if(!l)return;
    <p class="muted" style="margin:0 0 8px;font-size:13px">Tu proposes une remise si plusieurs acheteurs se groupent. Chacun rejoindra sans payer maintenant, puis validera sa transaction au prix réduit.</p>
    <label>Point de remise commun (où le groupe se retrouve)</label>
    <input id="gb_point" class="input" value="${esc(gb.point||(curProfile.zone||curProfile.city||'Abidjan'))}" placeholder="Ex : Campus UFHB, portail vert">
+   <label>Message pour le groupe (créneau / consigne de remise)</label>
+   <textarea id="gb_note" class="input" rows="2" placeholder="Ex : remise samedi 14h au portail UFHB, apportez l'app. Merci !">${esc(gb.note||'')}</textarea>
    <div class="row" style="gap:8px;align-items:flex-start">
      <div class="grow"><label>Palier 1 — à partir de…</label><input id="gb_m1" class="input" inputmode="numeric" value="${t0.min}" autocomplete="off"></div>
      <div class="grow"><label>…réduction %</label><input id="gb_o1" class="input" inputmode="numeric" value="${t0.off}" autocomplete="off"></div>
@@ -971,12 +973,13 @@ function gbSetupSheet(id){ const l=allListings.find(x=>x.id===id); if(!l)return;
 async function gbSave(id){ const l=allListings.find(x=>x.id===id); if(!l)return;
   if(!curProfile||l.sellerId!==curProfile.uid)return toast('Réservé au vendeur');
   const point=val('gb_point').trim()||'Abidjan';
+  const note=val('gb_note').trim();
   const mk=(m,o)=>({min:parseInt(m,10)||0,off:parseInt(o,10)||0});
   const a=mk(val('gb_m1'),val('gb_o1')), b=mk(val('gb_m2'),val('gb_o2'));
   let tiers=[]; [a,b].forEach(t=>{ if(t.min>0&&t.off>0){ if(t.off>70)return toast('Remise max 70 %'); tiers.push(t); } });
   if(!tiers.length)return toast('Renseigne au moins un palier valide');
   const old=gbMembers(l);
-  try{ await db.collection('listings').doc(id).update({gb:{on:true,point,tiers:tiers.sort((x,y)=>x.min-y.min),members:old,updatedAt:Date.now()}});
+  try{ await db.collection('listings').doc(id).update({gb:{on:true,point,note,tiers:tiers.sort((x,y)=>x.min-y.min),members:old,updatedAt:Date.now()}});
     closeAll(); toast("🤝 Groupe d'achat activé"); if(view==='sell'||view==='home')shell(); }
   catch(e){ console.error('GB_SAVE',e&&e.message); toast('❌ '+(e&&e.message||'erreur')); } }
 async function gbTurnOff(id){ const l=allListings.find(x=>x.id===id); if(!l)return;
@@ -1011,6 +1014,7 @@ function gbPanel(l,mine){ if(!l||l.svc||l.sold)return '';
       <div class="row" style="align-items:center"><b style="font-size:13px">🤝 Groupe d'achat</b>
         <span class="chip on" style="cursor:default">${on?'ACTIF':'Inactif'}</span></div>
       ${on?`<div class="muted" style="font-size:12px;margin-top:4px;line-height:1.5">${gbMembers(l).length} participant${gbMembers(l).length>1?'s':''} · ${gbTiers(l).map(gbTierText).join('  /  ')}${gbReachedOff(l)?(' · <b style="color:var(--grn)">−'+gbReachedOff(l)+' % débloqué</b>'):''}<br>📍 ${esc(l.gb.point||'')}</div>
+        ${(l.gb&&l.gb.note)?`<div class="muted" style="font-size:12px;margin-top:3px">📣 <b>Message :</b> ${esc(l.gb.note)}</div>`:''}
         <div class="row" style="gap:8px;margin-top:8px"><button class="btn ghost sm" style="flex:1" onclick="gbSetupSheet('${l.id}')">✏️ Modifier</button>
         <button class="btn ghost sm" style="flex:1" onclick="gbTurnOff('${l.id}')">Fermer le groupe</button></div>`
       :`<p class="muted" style="font-size:12px;margin:6px 0 10px">Propose une remise si plusieurs acheteurs se groupent (ex : 3 → −5 %, 6 → −10 %).</p>
@@ -1031,9 +1035,11 @@ function gbPanel(l,mine){ if(!l||l.svc||l.sold)return '';
        <button class="btn g" style="flex:1" onclick="gbJoin('${l.id}')">🤝 Rejoindre le groupe</button></div>
        <div class="muted" style="font-size:11px;margin-top:4px">Tu rejoins sans payer maintenant. À ${nT.length?nT[0].min:''}+ tu profites du prix réduit.</div>`;
   }
+  const gbNote=(l.gb&&l.gb.note)?l.gb.note.trim():'';
   return `<div class="box" style="margin-top:10px;border-left:4px solid #7B1FA2;background:#FBF4FE">
     <div class="row" style="align-items:center;gap:8px"><b style="font-size:13px">🤝 Achat groupé</b><span class="muted" style="font-size:11px">📍 ${esc(l.gb.point||'')}</span></div>
     <div class="muted" style="font-size:12px;margin:4px 0">${n} participant${n>1?'s':''} · paliers : ${nT.map(gbTierText).join(' · ')}${off>0?(' · <b style="color:var(--grn)">vous payez ${fmt(reduced)} FCFA</b>'):''}</div>
+    ${gbNote?`<div style="background:#fff;border:1px solid #E4D4F5;border-left:3px solid #7B1FA2;border-radius:8px;padding:7px 9px;font-size:12px;margin:2px 0 6px"><b style="font-size:11px">📣 Message du vendeur</b><div style="margin-top:2px;line-height:1.4">${esc(gbNote)}</div></div>`:''}
     ${nT.length?`<div style="background:#fff;border:1px solid var(--line);border-radius:9px;padding:7px 9px;font-size:11.5px">${progTxt}</div>`:''}
     ${action}
     <div class="muted" style="font-size:10.5px;margin-top:6px">Remise en lieu sûr au point commun. Transaction sécurisée individuelle au tarif réduit — ne paie jamais d'avance.</div></div>`; }
