@@ -260,14 +260,70 @@ const CATS=[
 const CONDS=['Neuf','Comme neuf','Très bon état','Bon état','Correct','À réparer'];
 function catOf(id){return CATS.find(c=>c.id===id)||CATS[3]}
 function fmt(n){return Math.round(n||0).toString().replace(/\B(?=(\d{3})+(?!\d))/g,' ')}
+// --- Séparateur de montants à la saisie ---
+// Formate en direct un champ prix (espaces des milliers) tout en gardant la valeur réelle en JS.
+function moneyFmt(el){ if(!el)return; const d=String(el.value||'').replace(/\D/g,''); el.value=d?fmt(d):''; }
+// Lit un prix saisi (avec ou sans espaces) en nombre entier FCFA.
+function parseMoney(v){ const d=String(v==null?'':v).replace(/\D/g,''); return parseInt(d,10)||0; }
 function esc(s){return String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}
 function timeago(t){if(!t)return '';let s=(Date.now()-t)/1000;if(s<60)return 'à l\'instant';if(s<3600)return Math.floor(s/60)+' min';if(s<86400)return Math.floor(s/3600)+' h';return Math.floor(s/86400)+' j'}
 function uidr(){return Math.random().toString(36).slice(2,9)}
 function logoMark(s){var u='hk'+Math.floor(Math.random()*1e6);return '<svg class="hkmark" width="'+s+'" height="'+s+'" viewBox="0 0 48 48" aria-hidden="true"><defs><linearGradient id="'+u+'" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#1C9E63"/><stop offset=".55" stop-color="#0E7A44"/><stop offset="1" stop-color="#0A5E34"/></linearGradient></defs><rect x="1.5" y="1.5" width="45" height="45" rx="13" fill="url(#'+u+')"/><rect x="1.5" y="1.5" width="45" height="45" rx="13" fill="none" stroke="rgba(255,255,255,.4)" stroke-width="1.1"/><path d="M16.5 12.5v15c0 3.6 2.9 6.5 6.5 6.5" fill="none" stroke="#fff" stroke-width="4.6" stroke-linecap="round" stroke-linejoin="round"/><path d="M31.5 12.5v15c0 3.6-2.9 6.5-6.5 6.5" fill="none" stroke="#fff" stroke-width="4.6" stroke-linecap="round" stroke-linejoin="round"/><path d="M16.5 25h15" stroke="#fff" stroke-width="4.6" stroke-linecap="round"/><circle cx="37" cy="10" r="3" fill="#FFA13E" stroke="#0E7A44" stroke-width="1"/></svg>';}
 function toast(m){let t=document.getElementById('toast');t.innerHTML=m;t.style.opacity=1;clearTimeout(t._h);t._h=setTimeout(()=>t.style.opacity=0,2400)}
-function closeAll(){['scrim','sheet','modal'].forEach(i=>document.getElementById(i).style.display='none')}
-function openSheet(h){closeAll();document.getElementById('sheet').innerHTML=h;document.getElementById('scrim').style.display='block';document.getElementById('sheet').style.display='block'}
-function openModal(h){closeAll();document.getElementById('modal').innerHTML=h;document.getElementById('modal').style.display='block'}
+// ---------- Gestion du bouton retour (v28, navigateur + PWA installée) ----------
+// Le bouton retour système (Android/iOS) doit d'abord fermer la fenêtre ouverte
+// (sheet/modal) et ne quitter l'app que si rien n'est affiché — que l'app soit
+// ouverte dans un navigateur (même avec un historique web préexistant) ou en PWA
+// installée. On pousse une entrée d'historique à l'ouverture pour intercepter le
+// retour, et on se base sur la VISIBILITÉ RÉELLE de la fenêtre (pas seulement un
+// compteur) pour ne JAMAIS quitter tant qu'une fenêtre est ouverte.
+let _ovDepth=0, _suppressPop=0;
+function _hideOverlays(){['scrim','sheet','modal'].forEach(i=>{const el=document.getElementById(i); if(el)el.style.display='none';});}
+function _ovVisible(){
+  // Détecte TOUTE fenêtre ouverte : sheet & modal (qui affichent le scrim), et le
+  // modal plein écran qui, lui, ne passe PAS par le scrim.
+  var sc=document.getElementById('scrim'),sh=document.getElementById('sheet'),mo=document.getElementById('modal');
+  if(sc&&sc.style.display==='block') return true;
+  if(sh&&sh.style.display==='block') return true;
+  if(mo&&mo.style.display==='block') return true;
+  return false; }
+function _pushOv(){ _ovDepth++; try{ history.pushState({h:1},''); }catch(e){} }
+window.addEventListener('popstate',function(){
+  if(_suppressPop>0){ _suppressPop--; return; }
+  // 1) Fenêtre ouverte (overlay sheet/modal) : on la ferme et on RESTE dans l'app.
+  if(_ovDepth>0 || _ovVisible()){
+    if(_ovDepth>0) _ovDepth--;
+    _hideOverlays();
+    return;
+  }
+  // 2) Écran de conversation (chat plein écran) : on le ferme et on revient à
+  //    l'écran précédent (l'entrée d'historique vient d'être consommée par le
+  //    navigateur, on ne refait donc pas history.back()).
+  if(_chatEntry && _activeCid){
+    _chatEntry=false;
+    _closeConvNow();
+    return;
+  }
+  // 3) Sinon rien d'ouvert : comportement par défaut (sortie normale).
+});
+function closeAll(){
+  // Fermeture (✕, scrim, action terminée) : on retire l'entrée d'historique de la fenêtre.
+  if(_ovDepth>0 || _ovVisible()){
+    const hadState=_ovDepth>0;
+    _ovDepth=0; _hideOverlays();
+    if(hadState){ _suppressPop++; try{ history.back(); }catch(e){} }
+  }
+  else _hideOverlays();
+}
+function _openOverlay(show){
+  _hideOverlays();
+  // Une fenêtre était déjà ouverte : on retire son entrée avant d'en pousser une
+  // neuve (l'app n'affiche qu'UNE fenêtre à la fois).
+  if(_ovDepth>0){ _ovDepth=0; _suppressPop++; try{ history.back(); }catch(e){ _suppressPop--; _ovDepth++; } }
+  _pushOv(); show();
+}
+function openSheet(h){ _openOverlay(()=>{ const sh=document.getElementById('sheet'); if(sh)sh.innerHTML=h; const sc=document.getElementById('scrim'),s2=document.getElementById('sheet'); if(sc)sc.style.display='block'; if(s2)s2.style.display='block'; }); }
+function openModal(h){ _openOverlay(()=>{ const m=document.getElementById('modal'); if(m){m.innerHTML=h; m.style.display='block';} }); }
 function renderApp(h){document.getElementById('app').innerHTML=h}
 
 /* ============== FIREBASE ============== */
@@ -282,7 +338,7 @@ async function loadDetailPres(sid){ if(!sid) return;
   const s=await getSeller(sid); const el=document.getElementById('detPres');
   if(!el) return; el.innerHTML=presChip(s);
   if(el._pt) clearInterval(el._pt);
-  el._pt=setInterval(async()=>{ const s2=await getSeller(sid); const e2=document.getElementById('detPres'); if(e2) e2.innerHTML=presChip(s2); },20000);
+  el._pt=setInterval(async()=>{ if(document.hidden) return; const s2=await getSeller(sid); const e2=document.getElementById('detPres'); if(e2) e2.innerHTML=presChip(s2); },30000);
 }
 
 // Notifications générées à partir des transactions de l'utilisateur (aucun
@@ -339,6 +395,11 @@ function fb(){
   firebase.initializeApp(window.HAM_FIREBASE_CONFIG);
   auth=firebase.auth(); db=firebase.firestore();
   auth.setPersistence(firebase.auth.Auth.Persistence.LOCAL).catch(()=>{});
+  // Cache Firestore hors-ligne (persistance) : réduit les lectures réseau et donc
+  // la consommation de quota, et rend l'app utilisable hors-ligne. Doit être
+  // demandé tôt. .catch(()=>{}) : en cas de multi-onglets on n'en tient pas compte
+  // sans bloquer (Firestore refuse alors, on continue en ligne).
+  if(db.enablePersistence) db.enablePersistence().catch(()=>{});
   auth.onAuthStateChanged(async u=>{
     curUser=u;
     if(u){
@@ -352,25 +413,46 @@ function fb(){
     boot();
   });
 }
-/* ====== PRESENCE "en ligne" ====== */
+/* ====== PRESENCE "en ligne" ======
+ * Optimisation quota (plan gratuit) : on écrivait `users/{uid}.presence` toutes
+ * les 20 s, soit ~3 écritures/min/utilisateur (premier consommateur d'écritures).
+ * Désormais : battement toutes les 60 s ET seulement quand l'onglet est visible.
+ * Fenêtre "en ligne" élargie (150 s) pour ne pas déclarer hors-ligne à tort
+ * entre deux battements. Réduction ~3-4x des écritures presence.
+ */
 let presenceTimer=null;
 function startPresence(){
   if(presenceTimer) clearInterval(presenceTimer);
   if(!auth || !auth.currentUser) return;
   const uid=auth.currentUser.uid;
-  const beat=()=>{ db.collection('users').doc(uid).update({presence:Date.now()}).catch(()=>{}); };
+  let lastWrite=0;
+  const beat=()=>{
+    // Écrit seulement si l'onglet est visible (pas de gaspillage en arrière-plan)
+    // et si ce n'est pas déjà très récent (évite les écritures redondantes).
+    if(document.hidden) return;
+    const now=Date.now();
+    if(now-lastWrite<30000) return;
+    lastWrite=now;
+    db.collection('users').doc(uid).update({presence:now}).catch(()=>{});
+  };
   beat();
-  presenceTimer=setInterval(beat, 20000);
+  presenceTimer=setInterval(beat, 60000);
+  const onVis=()=>{ if(!document.hidden) beat(); };
+  document.addEventListener('visibilitychange', onVis);
   window.addEventListener('beforeunload', ()=>{ if(presenceTimer) clearInterval(presenceTimer);
-    db.collection('users').doc(uid).update({presence:Date.now()-70000}).catch(()=>{}); });
+    document.removeEventListener('visibilitychange', onVis);
+    db.collection('users').doc(uid).update({presence:Date.now()-150000}).catch(()=>{}); });
 }
 function stopPresence(){ if(presenceTimer){ clearInterval(presenceTimer); presenceTimer=null; } }
-function isOnline(p){ return !!(p && p.presence && (Date.now()-p.presence)<60000); }
+function isOnline(p){ return !!(p && p.presence && (Date.now()-p.presence)<150000); }
 function presChip(p){ return isOnline(p)?'<span class="pres"><i class="dot"></i>En ligne</span>':'<span class="pres off"><i class="dot"></i>Hors ligne</span>'; }
 function isAdmin(){return curProfile&&curProfile.role==='admin'}
 
 /* ============== ROUTAGE ============== */
 let view='home', catF='all', q='', allListings=[];
+// Pagination du fil (leçon Vendito : ne jamais tout charger/afficher d'un coup).
+let feedShow=24;            // nb d'annonces affichées dans la grille
+let _listListened=false;    // garantit un seul abonnement listings/session
 // Favoris / ville / alertes de recherche (Paquet A)
 let cityF='all', myFavs=new Set(), favReady=false, myAlerts=[];
 function hasFav(id){ return myFavs.has(id); }
@@ -380,6 +462,9 @@ function shell(){
   // Si un fil de discussion est affiché en plein écran, on ne ré-affiche pas
   // le shell à cause d'un snapshot en arrière-plan (bug de sortie du chat).
   if(chatIsOpen()) return;
+  // Abonnements admin paresseux (économie de lectures) : actifs seulement sur la
+  // vue 'admin'. À appeler avant le rendu pour que les données soient prêtes.
+  _admEnsure(view);
   let body = view==='home'?homeV(): view==='sell'?sellV(): view==='msg'?messagesV(): view==='me'?profileV(): view==='admin'?adminV(): view==='resto'?restoV(): homeV();
   let top = curProfile? `<div class="logo grow">${logoMark(30)}<span class="words"><span class="word">hamet<b>kro</b></span><small>${esc(curProfile.country||"Côte d'Ivoire")} ${(curProfile.countryCode==='CI'||!curProfile.countryCode)?'🇨🇮':'🌍'} · ${esc(curProfile.city||'')}</small></span></div>
       <div style="display:flex;align-items:center;gap:8px">
@@ -389,11 +474,12 @@ function shell(){
       </div>`
     : `<div class="logo grow">${logoMark(30)}<span class="words"><span class="word">hamet<b>kro</b></span><small>Marché ivoirien 🇨🇮</small></span></div>
       <button class="btn g sm" onclick="openAuth()">Se connecter</button>`;
-  let msgBadge = curProfile&&msgUnread>0?`<span style="position:absolute;top:-2px;right:calc(50% - 20px);background:var(--sang);color:#fff;font-size:9px;font-weight:800;border-radius:50%;min-width:16px;height:16px;display:flex;align-items:center;justify-content:center;padding:0 3px">${msgUnread>99?'99+':msgUnread}</span>`:'';
   let items=[['home','🏠','Accueil'],['resto','🍽️','Repas'],['sell','🗂️','Vendre']];
   if(curProfile) items.push(['msg','💬','Messages']);
   items.push(['me','👤','Compte']);
-  items=items.map(([k,i,l])=>`<button class="${view===k?'on':''}" onclick="view='${k}';shell()"><span class="i" style="position:relative">${i}${k==='msg'?msgBadge:''}</span>${l}</button>`).join('');
+  // Le badge « non-lus » de Messages est posé dynamiquement par updateMsgNavBadge()
+  // (appelé après le rendu), pour qu'il soit mis à jour en direct quel que soit l'écran.
+  items=items.map(([k,i,l])=>`<button class="${view===k?'on':''}" onclick="view='${k}';shell()"><span class="i" style="position:relative">${i}</span>${l}</button>`).join('');
   if(isAdmin()) items+=`<button class="${view==='admin'?'on':''}" onclick="view='admin';shell()"><span class="i">📊</span>Admin</button>`;
   let installBar = deferredPrompt ? `<div style="position:fixed;left:50%;transform:translateX(-50%);bottom:64px;width:100%;max-width:460px;z-index:45;padding:6px 12px">
     <div style="background:var(--org);color:#fff;border-radius:14px;padding:10px 12px;display:flex;align-items:center;gap:8px;box-shadow:0 4px 14px rgba(0,0,0,.18)">
@@ -402,6 +488,7 @@ function shell(){
     </div></div>` : '';
   renderApp(`<div class="topbar">${top}</div>${body}<div class="nav">${items}</div>${installBar}`);
   document.documentElement.scrollTop=0;
+  updateMsgNavBadge();
 }
 
 /* ============== HOME (lecture publique) ============== */
@@ -442,16 +529,19 @@ function homeV(){
     }
   }
   let title = catF!=='all' ? `<div class="sectionTitle"><h3>${catOf(catF).e} ${catOf(catF).n}</h3><a onclick="setCat('all')">Tout voir</a></div>` : `<div class="sectionTitle"><h3>Annonces récentes</h3></div>`;
-  let cards=list.length?`<div class="grid">${list.map(tile).join('')}</div>`:`<div class="center cardp muted">Aucun article pour le moment${cityF!=='all'?` dans cette ville (${esc(resolvedCity())})`:''}.</div>`;
-  return hero+actRow()+cityBar()+featured+catSection+searchChips+title+cards;
+  let cards=list.length?`<div class="grid">${list.slice(0,feedShow).map(tile).join('')}</div>`:`<div class="center cardp muted">Aucun article pour le moment${cityF!=='all'?` dans cette ville (${esc(resolvedCity())})`:''}.</div>`;
+  let more = list.length>feedShow ? `<div style="text-align:center;padding:16px 0 2px"><button class="btn ghost sm" onclick="feedMore()">Afficher plus (${list.length-feedShow} restantes)</button></div>` : '';
+  return hero+actRow()+cityBar()+featured+catSection+searchChips+title+cards+more;
 }
-function setCat(id){catF=id;shell();}
+function feedMore(){ feedShow+=24; if(!chatIsOpen()) shell(); }
+function setCat(id){catF=id;feedShow=24;shell();}
 function firstImg(l){return (l.photos&&l.photos.length)?l.photos[0]:(l.img||'');}
 function tile(l){let im=firstImg(l);
   return `<div class="card tile" onclick="detail('${l.id}')">
   <div class="img">${im?`<img src="${esc(im)}" style="width:100%;height:100%;object-fit:cover">`:`<span class="e">${catOf(l.cat).e}</span>`}
     ${favHeart(l)}
     ${(l.photos&&l.photos.length>1)?`<span style="position:absolute;right:44px;top:8px;background:rgba(0,0,0,.5);color:#fff;font-size:9px;padding:2px 6px;border-radius:6px">🖼 ${l.photos.length}</span>`:''}
+    ${l.sold?`<span style="position:absolute;left:8px;top:8px;background:rgba(0,0,0,.55);color:#fff;font-size:9px;font-weight:800;padding:3px 8px;border-radius:999px">VENDU</span>`:''}
     <span class="new">${(Date.now()-(l.time||0))<3*864e5?'NOUVEAU':''}</span></div>
   <div class="bd"><h4>${esc(l.t)}</h4><div class="pr">${fmt(l.p)} FCFA</div>
     <div class="me"><span>📍 ${esc(l.city||'')}</span><span>${timeago(l.time)}</span></div></div></div>`;}
@@ -460,11 +550,14 @@ let galIndex={}; // état du carrousel par annonce
 function galleryHtml(l,id){
   const photos=(l.photos&&l.photos.length)?l.photos:(l.img?[l.img]:[]);
   const cur=galIndex[id]||0;
-  if(photos.length===0) return `<div style="height:200px;display:flex;align-items:center;justify-content:center;font-size:96px;background:linear-gradient(160deg,#E3F3E9,#FBEEDC)">${catOf(l.cat).e}</div>`;
-  if(photos.length===1) return `<div class="gallery"><img src="${esc(photos[0])}"></div>`;
+  const soldRibbon=l&&l.sold?`<div style="position:absolute;top:0;left:0;width:100%;background:rgba(0,0,0,.45);color:#fff;font-weight:900;font-size:17px;letter-spacing:.5px;text-align:center;padding:7px 0;z-index:4">✅ VENDU</div>`:'';
+  const wrap=(inner,ph)=>`<div style="position:relative;height:${ph||200}px">${inner}${soldRibbon}</div>`;
+  if(photos.length===0) return wrap(`<div style="height:100%;display:flex;align-items:center;justify-content:center;font-size:96px;background:linear-gradient(160deg,#E3F3E9,#FBEEDC)">${catOf(l.cat).e}</div>`);
+  if(photos.length===1) return `<div class="gallery">${soldRibbon}<img src="${esc(photos[0])}"></div>`;
   let dots=photos.map((_,i)=>`<i class="${i===cur?'on':''}"></i>`).join('');
   return `<div class="gallery">
     <img src="${esc(photos[cur])}">
+    ${soldRibbon}
     ${cur>0?`<button class="navbtn gprev" onclick="galleryGo('${id}',-1)">‹</button>`:''}
     ${cur<photos.length-1?`<button class="navbtn gnext" onclick="galleryGo('${id}',1)">›</button>`:''}
     <span class="count">${cur+1}/${photos.length}</span>
@@ -671,9 +764,18 @@ async function saveProfileEdit(){ const p=curProfile; const name=val('ep_name').
   const zone=val('ep_zone').trim(); const fb=val('ep_fb').trim().replace(/^@/,''); const ig=val('ep_ig').trim().replace(/^@/,''); const tk=val('ep_tk').trim().replace(/^@/,'');
   const up={name}; if(wa){ const digits=wa.replace(/[^0-9]/g,''); if(digits.length<7)return toast('Numéro invalide'); up.wa=wa; } else up.wa='';
   if(city) up.city=city; up.bio=bio; up.zone=zone; up.fb=fb; up.ig=ig; up.tk=tk;
-  if(_avatarTmp){ up.avatar=_avatarTmp; _avatarTmp=null; } if(_coverTmp){ up.cover=_coverTmp; _coverTmp=null; }
-  try{ await db.collection('users').doc(curProfile.uid).update(up); curProfile={...curProfile,...up}; sellerCache[curProfile.uid]=curProfile;
-    closeAll(); toast('✅ Profil mis à jour'); view='me';shell(); }catch(e){ console.error('PROF_EDIT',e&&e.code,e&&e.message); toast('❌ '+(e&&e.message||'erreur')); } }
+  if(_avatarTmp) up.avatar=_avatarTmp;
+  if(_coverTmp) up.cover=_coverTmp;
+  // On ne vide _avatarTmp/_coverTmp QU'APRÈS une écriture confirmée : s'il y a un
+  // échec (réseau, quota, règle…), les photos restent prêtes et un nouvel essai
+  // les renvoie. (Avant, on les vidait avant l'écriture => après un échec la photo
+  // était perdue silencieusement et « Enregistrer » ne semblait plus rien faire.)
+  try{ await db.collection('users').doc(curProfile.uid).update(up);
+    if(up.avatar) _avatarTmp=null;
+    if(up.cover) _coverTmp=null;
+    curProfile={...curProfile,...up}; sellerCache[curProfile.uid]=curProfile;
+    closeAll(); toast('✅ Profil mis à jour'); view='me';shell(); }
+  catch(e){ console.error('PROF_EDIT',e&&e.code,e&&e.message); toast('❌ '+(e&&e.message||'erreur — réessaie : ta photo reste sélectionnée')); } }
 /* ====== NOTIFICATIONS (Notification API — en arrière-plan/onglet masqué) ====== */
 function notifKey(){ return 'ham_notif_'+(curProfile?curProfile.uid:'anon'); }
 function notifWanted(){ return localStorage.getItem(notifKey())!=='0'; }
@@ -725,6 +827,20 @@ async function bumpListing(id){ const d=await db.collection('listings').doc(id).
   await d.ref.update({time:Date.now(),createdAt:Date.now()}); toast('↻ Remise en avant 🔥'); closeAll(); view='sell';shell(); }
 async function toggleSoldMine(id){ const d=await db.collection('listings').doc(id).get(); if(!d.exists)return;
   const now=!d.data().sold; await d.ref.update({sold:now}); toast(now?'✅ Marquée vendue':'↩️ Remise en vente'); closeAll(); view='sell';shell(); }
+// Modifier le prix d'un article déjà publié (le vendeur uniquement).
+function editPriceSheet(id){ const l=allListings.find(x=>x.id===id); if(!l)return;
+  if(!curProfile||l.sellerId!==curProfile.uid) return toast('Réservé au vendeur');
+  openSheet(`<div class="row" style="justify-content:space-between;padding:12px 0"><b>✏️ Modifier le prix</b><span style="cursor:pointer;font-size:20px" onclick="closeAll()">✕</span></div>
+   <div class="box"><div class="muted">« ${esc(l.t)} » — prix actuel <b>${fmt(l.p)} FCFA</b></div></div>
+   <label>Nouveau prix (FCFA) *</label><input id="ep_price" class="input" type="text" inputmode="numeric" value="${fmt(l.p)}" autocomplete="off" oninput="moneyFmt(this)">
+   <div style="height:8px"></div>
+   <button class="btn g" onclick="saveEditPrice('${l.id}')">💾 Enregistrer le nouveau prix</button>`); }
+async function saveEditPrice(id){ const l=allListings.find(x=>x.id===id); if(!l)return;
+  const p=parseMoney(val('ep_price')); if(!p||p<=0) return toast('Prix invalide');
+  if(l.sellerId!==curProfile.uid) return toast('Réservé au vendeur');
+  try{ await db.collection('listings').doc(id).update({p, updatedAt:Date.now()});
+    closeAll(); toast('✅ Prix modifié ('+fmt(p)+' FCFA)'); if(view==='sell'||view==='home')shell(); }
+  catch(e){ console.error('EDITP',e&&e.code,e&&e.message); toast('❌ '+(e&&e.message||'erreur')); } }
 // --- « Proposer un prix » : négociation structurée hébergée sur la conversation ---
 async function ensureConvFor(l){ const cid=convIdKey(curProfile.uid,l.sellerId,l.id);
   const ref=db.collection('conversations').doc(cid); const d=await ref.get();
@@ -736,12 +852,12 @@ function proposeSheet(id){ if(!curProfile)return openAuth(); const l=allListings
   if(l.sellerId===curProfile.uid) return toast('C\'est ton propre article');
   openSheet(`<div class="row" style="justify-content:space-between;padding:12px 0"><b>🤝 Proposer un prix</b><span style="cursor:pointer;font-size:20px" onclick="closeAll()">✕</span></div>
    <div class="box"><div class="muted">« ${esc(l.t)} » — affiché à <b>${fmt(l.p)} FCFA</b></div></div>
-   <label>Ton prix (FCFA)</label><input id="of_price" class="input" type="number" value="${l.p}">
+   <label>Ton prix (FCFA)</label><input id="of_price" class="input" type="text" inputmode="numeric" value="${fmt(l.p)}" autocomplete="off" oninput="moneyFmt(this)">
    <label>Message au vendeur (optionnel)</label><input id="of_note" class="input" placeholder="Ex : je peux venir la chercher aujourd'hui…">
    <div class="info">💡 Le vendeur peut <b>accepter</b> ou <b>refuser</b>. Si accepté, tu lances la transaction sécurisée au prix convenu.</div>
    <button class="btn g" onclick="sendOffer('${id}')">Envoyer mon offre</button>`); }
 async function sendOffer(id){ const l=allListings.find(x=>x.id===id); if(!l)return;
-  const amount=parseFloat(val('of_price')); if(!amount||amount<=0)return toast('Prix invalide');
+  const amount=parseMoney(val('of_price')); if(!amount||amount<=0)return toast('Prix invalide');
   const note=val('of_note').trim(); const cid=await ensureConvFor(l);
   const now=Date.now(); const msg={uid:curProfile.uid,name:curProfile.name,time:now,text:'💰 propose '+fmt(amount)+' FCFA'+(note?(' — '+note):'')};
   const fv=firebase.firestore.FieldValue;
@@ -868,10 +984,15 @@ function detail(id){let l=allListings.find(x=>x.id===id);if(!l)return;
     ? `<div class="info" style="border-left:4px solid var(--grn)">C'est ton article.${l.sold?' <b>Marqué vendu.</b>':''}</div>
        ${listingStale(l)?`<div class="warn"><b>⚠️ Annonce publiée il y a ${listingDays(l)} j.</b> Remets-la en avant pour la voir remonter dans « Nouveautés ».</div>`:''}
        <div class="row" style="gap:8px;margin-top:8px">
-         <button class="btn g" style="flex:1" onclick="bumpListing('${l.id}')">↻ Remettre en avant</button>
+         <button class="btn g" style="flex:1" onclick="editPriceSheet('${l.id}')">✏️ Modifier le prix</button>
          <button class="btn ghost" style="flex:1" onclick="toggleSoldMine('${l.id}')">${l.sold?'↩️ Remettre en vente':'✅ Marquer vendue'}</button>
        </div>`
-    : `<div class="row" style="gap:8px;margin-top:8px">
+    : l.sold
+      ? `<div class="row" style="gap:8px;margin-top:8px">
+        <button class="btn ghost" style="flex:1" onclick="shareListing('${l.id}')">📤 Partager</button>
+        <button class="btn ghost" style="flex:0 0 54px;font-size:19px" onclick="curUser?toggleFav('${l.id}',true):favCta()">${myFavs.has(l.id)?'❤️':'🤍'}</button></div>
+       <div class="info" style="text-align:center">✅ Cet article a été vendu.</div>`
+      : `<div class="row" style="gap:8px;margin-top:8px">
       <button class="btn g" style="flex:1" onclick="curUser?openChatFromListing('${l.id}'):openAuth('sell')">💬 Discuter</button>
       <button class="btn ghost" style="flex:1" onclick="shareListing('${l.id}')">📤 Partager</button>
       <button class="btn ghost" style="flex:0 0 54px;font-size:19px" onclick="curUser?toggleFav('${l.id}',true):favCta()">${myFavs.has(l.id)?'❤️':'🤍'}</button></div>
@@ -972,7 +1093,7 @@ function sellSheet(){if(!curProfile)return openAuth();
   <input type="file" id="${pid}_file" accept="image/*" multiple style="display:none" onchange="addPhotos('${pid}',this)">
   <input type="hidden" id="${pid}_photos">
   <label>Titre *</label><input id="${pid}_t" class="input" placeholder="Ex : Robe wax taille M…">
-  <div class="row" style="align-items:flex-start"><div class="grow"><label>Prix (FCFA) *</label><input id="${pid}_p" class="input" type="number"></div><div style="width:112px"><label>Ville</label><input id="${pid}_c" class="input" value="${esc(curProfile.city||'Abidjan')}"></div></div>
+  <div class="row" style="align-items:flex-start"><div class="grow"><label>Prix (FCFA) *</label><input id="${pid}_p" class="input" type="text" inputmode="numeric" placeholder="Ex : 15 000" autocomplete="off" oninput="moneyFmt(this)"></div><div style="width:112px"><label>Ville</label><input id="${pid}_c" class="input" value="${esc(curProfile.city||'Abidjan')}"></div></div>
   <label>État</label><div class="row" style="gap:6px;flex-wrap:wrap">${CONDS.map(c=>`<span class="catpill" data-c="${c}" onclick="pickCond(this)">${c}</span>`).join('')}</div><input type="hidden" id="${pid}_cond" value="Bon état">
   <label>Description</label><textarea id="${pid}_d" class="input" rows="3"></textarea>
   <button class="btn g" onclick="publish('${pid}')">Publier 🎉</button>`);
@@ -980,16 +1101,28 @@ function sellSheet(){if(!curProfile)return openAuth();
 let curSheetId=null, pendingPhotos=[]; // {pid: [dataUrl...]}
 function pickCat(el){el.closest('.row').querySelectorAll('.catpill').forEach(x=>x.classList.remove('on'));el.classList.add('on');document.getElementById(curSheetId+'_cat').value=el.dataset.cat}
 function pickCond(el){el.closest('.row').querySelectorAll('.catpill').forEach(x=>x.classList.remove('on'));el.classList.add('on');document.getElementById(curSheetId+'_cond').value=el.dataset.c}
-// Compression d'une image fichier → dataURL (petit, pour rester sous la limite Firestore)
-function compressFile(file,maxSize){return new Promise((res)=>{let r=new FileReader();r.onload=()=>{let img=new Image();img.onload=()=>{let m=Math.min(1,maxSize/Math.max(img.width,img.height));let cv=document.createElement('canvas');cv.width=Math.max(1,Math.round(img.width*m));cv.height=Math.max(1,Math.round(img.height*m));cv.getContext('2d').drawImage(img,0,0,cv.width,cv.height);res(cv.toDataURL('image/jpeg',.68));};img.src=r.result};r.readAsDataURL(file);});}
+// Compression renforcée (v26) : WebP quand supporté, sinon JPEG (repli auto).
+// Plus petite et moins lourde → reste bien sous la limite Firestore et économise le quota.
+let _webpOk=null;
+function webpSupported(){ if(_webpOk!==null) return _webpOk;
+  try{ _webpOk=document.createElement('canvas').toDataURL('image/webp').indexOf('data:image/webp')===0; }
+  catch(e){ _webpOk=false; } return _webpOk; }
+function compressFile(file,maxSize,maxQ){return new Promise((res)=>{let r=new FileReader();r.onload=()=>{let img=new Image();img.onload=()=>{
+  let m=Math.min(1,maxSize/Math.max(img.width,img.height));
+  let cv=document.createElement('canvas');cv.width=Math.max(1,Math.round(img.width*m));cv.height=Math.max(1,Math.round(img.height*m));
+  cv.getContext('2d').drawImage(img,0,0,cv.width,cv.height);
+  const q=maxQ||.66;
+  // WebP ~30% plus léger que JPEG à qualité comparable ; sinon on retombe sur JPEG.
+  const out=webpSupported()?cv.toDataURL('image/webp',q):cv.toDataURL('image/jpeg',q);
+  res(out);};img.onerror=()=>res(null);img.src=r.result};r.onerror=()=>res(null);r.readAsDataURL(file);});}
 function addPhotos(pid,input){pendingPhotos[pid]=pendingPhotos[pid]||[];let files=[...input.files];input.value='';
- let run=async()=>{for(const f of files){if(pendingPhotos[pid].length>=5)break;let d=await compressFile(f,600);pendingPhotos[pid].push(d);}renderThumbs(pid);};
+ let run=async()=>{for(const f of files){if(pendingPhotos[pid].length>=5)break;let d=await compressFile(f,480,.6);if(d)pendingPhotos[pid].push(d);}renderThumbs(pid);};
  run();}
 function renderThumbs(pid){let arr=pendingPhotos[pid]||[];let box=document.getElementById(pid+'_th');if(!box)return;
  box.innerHTML=arr.map((d,i)=>`<div class="thumbWrap"><img src="${esc(d)}"><button class="rm" onclick="rmPhoto('${pid}',${i})">✕</button></div>`).join('')
    +(arr.length<5?`<div class="addPhoto" onclick="document.getElementById('${pid}_file').click()">📷<br>Ajouter</div>`:'');}
 function rmPhoto(pid,i){pendingPhotos[pid].splice(i,1);renderThumbs(pid);}
-async function publish(pid){let t=val(pid+'_t').trim(),p=parseFloat(val(pid+'_p')),city=val(pid+'_c')||'Abidjan',d=val(pid+'_d');if(t.length<3)return toast('Titre requis');if(!p||p>0===false||!p)return toast('Prix invalide');
+async function publish(pid){let t=val(pid+'_t').trim(),p=parseMoney(val(pid+'_p')),city=val(pid+'_c')||'Abidjan',d=val(pid+'_d');if(t.length<3)return toast('Titre requis');if(!p||p>0===false||!p)return toast('Prix invalide');
  let photos=pendingPhotos[pid]||[];if(photos.length===0)return toast('Ajoute au moins une photo');
  try{
  let doc=db.collection('listings').doc();let now=Date.now();
@@ -1007,6 +1140,13 @@ async function publish(pid){let t=val(pid+'_t').trim(),p=parseFloat(val(pid+'_p'
 // chat (bug corrigé).
 let convCache=[], msgUnread=0, chatUnsub=null, _activeCid=null, _convData=null, _convSearch='';
 let _pendingMsgs=[]; // messages encore en cours de confirmation serveur (écho optimiste)
+// Le chat est un écran plein écran (renderApp), pas une overlay. Pour que le bouton
+// retour système le ferme au lieu de quitter l'app, on y reflète aussi une entrée
+// d'historique et on mémorise la vue d'origine pour y revenir.
+let _chatEntry=false, _chatRet=null;
+// Pousse une entrée d'historique pour que le bouton retour système (PWA &
+// navigateur) ferme le chat plein écran au lieu de quitter l'app.
+function _pushChat(){ if(!_chatEntry){ _chatEntry=true; try{ history.pushState({h:'conv'},''); }catch(e){} } }
 function convIdKey(a,b,item){return [a,b].sort().join('__')+'__'+item;}
 function otherName(c){ return curProfile && (c.participants||[]).find(p=>p.uid!==curProfile.uid); }
 function mySeen(c){return c&&c.seen&&curProfile ? (c.seen[curProfile.uid]||0):0;}
@@ -1025,6 +1165,9 @@ function listenConvs(){ auth.onAuthStateChanged(u=>{ if(chatUnsub)chatUnsub(); c
       if(grown.length) fireNotif(grown[0]);
     }
     _prevUnread=msgUnread;
+    // Badge « non-lus » mis à jour en direct sur l'onglet Messages, même si on n'est
+    // pas sur l'accueil/l'onglet Messages (sinon le « 1 » n'apparaît pas à la réception).
+    updateMsgNavBadge();
     if(!chatIsOpen() && (view==='msg'||view==='home'))boot();
   }); }); }
 // Liste mes conversations (onglet Messages)
@@ -1077,8 +1220,30 @@ function convMarkSeen(cid,data){ if(!curProfile)return; const seen=Object.assign
   // Mise à jour locale immédiate : le badge « non-lu » disparaît sans attendre le snapshot.
   const c=convCache.find(x=>x.id===cid); if(c){ c.seen=seen;
     msgUnread=convCache.reduce((s,x)=>s+unreadOf(x),0);
+    updateMsgNavBadge();
     if(!chatIsOpen() && view==='msg') shell(); } }
 function otherUid(c){ const o=otherName(c); return o?o.uid:null; }
+// Met à jour EN DIRECT le petit badge « non-lus » de l'onglet Messages dans la barre
+// du bas (sans re-rendre tout le shell → on garde la position et la vue courante).
+// Appelé dès qu'un message arrive, quel que soit l'écran où se trouve le vendeur.
+function updateMsgNavBadge(){
+  const nav=document.querySelector('.nav');
+  if(!nav) return;
+  let btn=null;
+  Array.from(nav.querySelectorAll('button')).forEach(b=>{
+    const sp=b.querySelector('.i'); if(sp && (b.textContent||'').trim().toLowerCase().includes('messages')) btn=sp;
+  });
+  if(!btn) return;
+  let old=btn.querySelector('.msgBadge'); if(old) old.remove();
+  if(msgUnread>0){
+    const el=document.createElement('span');
+    el.className='msgBadge';
+    el.style.cssText='position:absolute;top:-4px;right:-6px;background:var(--sang);color:#fff;font-size:9px;font-weight:800;border-radius:50%;min-width:16px;height:16px;display:flex;align-items:center;justify-content:center;padding:0 3px;box-shadow:0 0 0 2px #fff';
+    el.textContent=msgUnread>99?'99+':msgUnread;
+    btn.style.position='relative';
+    btn.appendChild(el);
+  }
+}
 function fmtClock(t){ if(!t)return ''; const d=new Date(t); return pad2(d.getHours())+':'+pad2(d.getMinutes()); }
 function convItem(){ const c=_convData; if(!c)return null; return (allListings||[]).find(l=>l.id===c.itemId)||null; }
 // Indicateur "en train d'écrire…" : écritures limitées (début + fin de saisie).
@@ -1125,6 +1290,10 @@ async function openConv(cid){ if(!curProfile) return openAuth();
   const ref=db.collection('conversations').doc(cid);
   const d=await ref.get(); if(!d.exists) return;
   _convData=d.data(); _activeCid=cid; _convRef=ref; _convSearch=''; _pendingMsgs=[];
+  // Mémorise l'écran d'où on vient pour y revenir à la fermeture, et pousse une
+  // entrée d'historique pour que le bouton retour système ferme le chat.
+  if(!_chatRet) _chatRet = view;
+  _pushChat();
   var _sh=document.querySelector('.shell'); if(_sh)_sh.classList.add('nopad');
   convMarkSeen(cid,_convData);
   const o=otherName(_convData); const otherU=otherUid(_convData); const otherNameRaw=(o?o.name:'Vendeur');
@@ -1272,9 +1441,18 @@ let _convRef=null; let _metaTimer=null;
 function convScroller(){return document.getElementById('convSc');}
 function convAtBottom(){ const b=convScroller(); if(!b)return true; return b.scrollHeight-b.scrollTop-b.clientHeight<40; }
 function scrollConv(){ setTimeout(()=>{const b=convScroller(); if(b)b.scrollTop=b.scrollHeight;},20); }
-function closeConv(){ if(chatUnsub)chatUnsub(); chatUnsub=null; chatTypingStop(); _activeCid=null; _convData=null; _convRef=null; _pendingMsgs=[];
+function _closeConvNow(){ if(chatUnsub)chatUnsub(); chatUnsub=null; chatTypingStop(); _activeCid=null; _convData=null; _convRef=null; _pendingMsgs=[];
   if(_metaTimer){ clearInterval(_metaTimer); _metaTimer=null; }
-  var _sh=document.querySelector('.shell'); if(_sh)_sh.classList.remove('nopad'); view='msg';shell(); }
+  var _sh=document.querySelector('.shell'); if(_sh)_sh.classList.remove('nopad');
+  // Retour à l'écran d'où l'on venait (sinon l'onglet Messages).
+  if(_chatRet){ view=_chatRet; _chatRet=null; }
+  else view='msg';
+  shell(); }
+function closeConv(){ // bouton ← : on ferme et on retire l'entrée d'historique du chat.
+  const had=_chatEntry; _chatEntry=false;
+  _closeConvNow();
+  if(had){ _suppressPop++; try{ history.back(); }catch(e){ _suppressPop--; } }
+}
 let _chatImg=null;
 // Photo choisie dans le chat : compression puis envoi.
 function chatOnPhoto(inp){ const f=inp.files&&inp.files[0]; inp.value=''; if(!f||!_activeCid) return;
@@ -1320,7 +1498,7 @@ async function sendMsg(){ const inp=document.getElementById('msgText'); const tx
 function startContact(id){let l=allListings.find(x=>x.id===id);if(!l)return;
  openSheet(`<div class="row" style="justify-content:space-between;padding:12px 0"><b>Contacter ${esc(l.sellerName)}</b><span style="cursor:pointer;font-size:20px" onclick="closeAll()">✕</span></div>
   <div class="info">Transaction <b>sécurisée</b> : validation mutuelle acheteur + vendeur, commission ${Math.round(COMM_RATE*100)}% tracée.</div>
-  <label>Prix convenu (FCFA) *</label><input id="ag_p" class="input" type="number" value="${l.p}">
+  <label>Prix convenu (FCFA) *</label><input id="ag_p" class="input" type="text" inputmode="numeric" value="${fmt(l.p)}" autocomplete="off" oninput="moneyFmt(this)">
   <label>Mode de remise</label>
   <div class="row" style="gap:8px;margin:8px 0">
    <div class="card grow" style="cursor:pointer;padding:10px;text-align:center;border:2px solid var(--org)" onclick="pickMode('hand',this)"><div style="font-size:24px">🤝</div><b>Main propre</b><div class="muted">Lieu public</div></div>
@@ -1329,7 +1507,7 @@ function startContact(id){let l=allListings.find(x=>x.id===id);if(!l)return;
   <div id="ag_note" class="info">📍 Remettez l'article en lieu public sécurisé. Paie à la réception, jamais d'avance.</div>
   <button class="btn g" onclick="createTx('${id}')">Lancer la transaction sécurisée</button>`);}
 function pickMode(m,el){el.closest('.row').querySelectorAll('.card').forEach(x=>x.style.border='2px solid var(--line)');el.style.border='2px solid var(--org)';document.getElementById('ag_mode').value=m;document.getElementById('ag_note').innerHTML=m==='hand'?'📍 Remise en lieu public sécurisé. Paie à la réception.':'📦 Suivi livraison / point relais. L\'acheteur confirme la réception.'}
-async function createTx(id){let l=allListings.find(x=>x.id===id);let p=parseFloat(val('ag_p'));if(!p||p<=0)return toast('Prix invalide');
+async function createTx(id){let l=allListings.find(x=>x.id===id);let p=parseMoney(val('ag_p'));if(!p||p<=0)return toast('Prix invalide');
  let doc=db.collection('transactions').doc();let now=Date.now();
  await doc.set({id:doc.id,itemId:id,itemTitle:l.t,buyerId:curProfile.uid,buyerName:curProfile.name,sellerId:l.sellerId,sellerName:l.sellerName,participants:[curProfile.uid,l.sellerId],mode:document.getElementById('ag_mode').value,price:p,status:'agreed',validBuyer:false,validSeller:false,commission:Math.round(p*COMM_RATE),createdAt:now,updatedAt:now});
  closeAll();toast('✅ Transaction sécurisée lancée');view='sell';shell();}
@@ -1601,27 +1779,53 @@ async function resolveReport(id, action){
 
 /* ============== ÉCOUTE DES DONNÉES (Firestore temps réel) ============== */
 let txCache=[], _deepDone=false;
-let admUsers=null, admTx=null, admConvs=[], admMenus=[], admOrders=[], admReports=[], _admLoaded=false, _admTab='overview', _admRoleF='all', _admQ='', _admTxF='all';
-// Charge, pour l'admin, l'ensemble des comptes et transactions (vue globale).
+let admUsers=null, admTx=null, admConvs=[], admMenus=[], admOrders=[], admReports=[], _admTab='overview', _admRoleF='all', _admQ='', _admTxF='all';
+// Optimisation lecture (plan gratuit) : le tableau de bord admin écoutait 6
+// collections ENTIÈRES (users, transactions, conversations, foodmenus,
+// foodorders, reports) en permanence, même hors de la vue admin — très gros
+// consommateur de lectures pour le compte admin. Désormais ces abonnements ne
+// sont actifs QUE quand la vue 'admin' est ouverte, puis coupés à la sortie.
+let _admUnsubs=[], _admSubscribed=false;
+function _admUnsubAll(){ (_admUnsubs||[]).forEach(u=>{ try{u()}catch(e){} }); _admUnsubs=[]; _admSubscribed=false; }
+function _admSubscribe(){
+  if(_admSubscribed) return;
+  if(!isAdmin()) return;
+  admUsers=null; admTx=null; admConvs=[]; admMenus=[]; admOrders=[]; admReports=[];
+  const onlyAdmin=()=>{ if(!chatIsOpen() && view==='admin') shell(); };
+  _admSubscribed=true;
+  _admUnsubs.push(db.collection('users').onSnapshot(s=>{ admUsers=s.docs.map(d=>d.data()); onlyAdmin(); }));
+  _admUnsubs.push(db.collection('transactions').onSnapshot(s=>{ admTx=s.docs.map(d=>d.data()); onlyAdmin(); }));
+  _admUnsubs.push(db.collection('conversations').onSnapshot(s=>{ admConvs=s.docs.map(d=>d.data()); onlyAdmin(); }));
+  _admUnsubs.push(db.collection('foodmenus').onSnapshot(s=>{ admMenus=s.docs.map(d=>{const x=d.data();x.id=d.id;return x;}); onlyAdmin(); }));
+  _admUnsubs.push(db.collection('foodorders').onSnapshot(s=>{ admOrders=s.docs.map(d=>d.data()); onlyAdmin(); }));
+  _admUnsubs.push(db.collection('reports').orderBy('createdAt','desc').onSnapshot(s=>{ admReports=s.docs.map(d=>{const x=d.data();x.id=d.id;return x;}); onlyAdmin(); }, e=>{ console.warn('REPORTS_READ', e && e.code, e && e.message); }));
+}
+// Appelé à chaque shell() : abonne si on entre dans la vue admin, coupe sinon.
+function _admEnsure(curView){
+  if(curView==='admin') _admSubscribe();
+  else if(_admSubscribed) _admUnsubAll();
+}
 function listenAdmin(){
   auth.onAuthStateChanged(u=>{
-    admUsers=[]; admTx=[]; _admLoaded=false;
+    _admUnsubAll(); _admSubscribed=false;
+    admUsers=null; admTx=null; admConvs=[]; admMenus=[]; admOrders=[]; admReports=[];
     if(!u) return;
+    // Détection rôle ADMIN via le doc du compte courant (léger, 1 doc).
+    // Si le rôle change (promu/déchu), on rafraîchit et on ré-évalue.
     db.collection('users').doc(u.uid).onSnapshot(me=>{
-      const isAd = me.exists && me.data().role==='admin';
-      if(isAd && !_admLoaded){
-        _admLoaded=true;
-        db.collection('users').onSnapshot(s=>{ admUsers=s.docs.map(d=>d.data()); if(!chatIsOpen()&&view==='admin')shell(); });
-        db.collection('transactions').onSnapshot(s=>{ admTx=s.docs.map(d=>d.data()); if(!chatIsOpen()&&view==='admin')shell(); });
-        db.collection('conversations').onSnapshot(s=>{ admConvs=s.docs.map(d=>d.data()); if(!chatIsOpen()&&view==='admin')shell(); });
-        db.collection('foodmenus').onSnapshot(s=>{ admMenus=s.docs.map(d=>{const x=d.data();x.id=d.id;return x;}); if(!chatIsOpen()&&view==='admin')shell(); });
-        db.collection('foodorders').onSnapshot(s=>{ admOrders=s.docs.map(d=>d.data()); if(!chatIsOpen()&&view==='admin')shell(); });
-        db.collection('reports').orderBy('createdAt','desc').onSnapshot(s=>{ admReports=s.docs.map(d=>{const x=d.data();x.id=d.id;return x;}); if(!chatIsOpen()&&view==='admin')shell(); }, e=>{ console.warn('REPORTS_READ', e && e.code, e && e.message); });
-      } else if(!isAd){ _admLoaded=false; }
+      if(!me.exists) return;
+      const d=me.data();
+      if(curProfile && d.role && d.role!==curProfile.role){
+        curProfile={...curProfile, role:d.role};
+        if(!chatIsOpen()) shell();
+      }
     });
   });
 }
-function listenListings(){db.collection('listings').orderBy('time','desc').onSnapshot(snap=>{allListings=snap.docs.map(d=>d.data());if(!chatIsOpen())boot();if(!_deepDone){_deepDone=true;setTimeout(openListingFromURL,200);}},err=>{renderApp(`<div class="load"><div style="font-size:46px">⚠️</div><div>Impossible de lire les annonces.<br><span class="muted">Vérifie que Firestore est activé et les règles publiées.</span></div><div>${esc(err&&err.message||'')}</div></div>`);});}
+function listenListings(){if(_listListened)return; _listListened=true;
+  // Cap serveur (leçon « pagination ») : borne la lecture initiale du catalogue.
+  // Quand le catalogue dépassera 1000, on basculera sur une pagination par curseur.
+  db.collection('listings').orderBy('time','desc').limit(1000).onSnapshot(snap=>{allListings=snap.docs.map(d=>d.data());if(!chatIsOpen())boot();if(!_deepDone){_deepDone=true;setTimeout(openListingFromURL,200);}},err=>{renderApp(`<div class="load"><div style="font-size:46px">⚠️</div><div>Impossible de lire les annonces.<br><span class="muted">Vérifie que Firestore est activé et les règles publiées.</span></div><div>${esc(err&&err.message||'')}</div></div>`);});}
 function listenTx(){auth.onAuthStateChanged(u=>{ if(!u){txCache=[];notifsCache=[];notifUnread=0;return;}
   db.collection('transactions').where('participants','array-contains',u.uid).onSnapshot(snap=>{txCache=snap.docs.map(d=>d.data());buildNotifs(u.uid);if(!chatIsOpen()&&(view==='sell'||view==='admin'||view==='home'))boot();}); });}
 // Reconstruit aussi les notifs au chargement initial d'un utilisateur connecté.
@@ -1714,6 +1918,48 @@ async function foodSave(){ const n=(val('ff_name')||'').trim(), z=(val('ff_zone'
   }catch(e){ console.error('FOOD_SAVE', e&&e.code, e&&e.message); toast('❌ '+(e&&e.message||'enregistrement impossible')); }
 }
 // --- Cartes menu / commande ---
+/* --- Gestion du menu du jour : modifier/supprimer un plat, supprimer le menu --- */
+// L'id du menu du jour = {uid}_{date} (même règle qu'à la publication).
+function _myMenuRef(){ return db.collection('foodmenus').doc(curProfile.uid+'_'+todayISO()); }
+async function _readMyMenu(){ try{ const d=await _myMenuRef().get(); return d.exists?d.data():null; }catch(e){ return null; } }
+// Modifier un plat précis (ouvre un petit éditeur).
+function dishEdit(i){ if(!curProfile)return; const m=(foodToday||[]).find(x=>x.sellerId===curProfile.uid); if(!m||!m.items||!m.items[i])return;
+  const it=m.items[i];
+  window._editDishIdx=i;
+  openSheet(`<div class="row" style="justify-content:space-between;padding:12px 0"><b>✏️ Modifier le plat</b><span style="cursor:pointer;font-size:20px" onclick="closeAll()">✕</span></div>
+   <label>Nom du plat</label><input id="ed_name" class="input" value="${esc(it.name)}">
+   <label>Prix (FCFA)</label><input id="ed_price" class="input" type="text" inputmode="numeric" value="${it.price?fmt(it.price):''}" autocomplete="off" oninput="moneyFmt(this)">
+   <div style="height:8px"></div><button class="btn g" onclick="dishSaveEdit()">Enregistrer</button>`); }
+async function dishSaveEdit(){ if(!curProfile)return; const name=(val('ed_name')||'').trim(); const price=parseMoney(val('ed_price'));
+  if(name.length<1) return toast('Nom requis'); if(!price||price<=0) return toast('Prix invalide');
+  const i=window._editDishIdx; const m=await _readMyMenu(); if(!m||!m.items||!m.items[i]) return toast('Menu introuvable');
+  const items=m.items.slice(); items[i]={name,price};
+  try{ await _myMenuRef().update({items, time:Date.now()}); closeAll(); toast('✅ Plat modifié'); shell(); }
+  catch(e){ console.error('DISH_EDIT',e&&e.code,e&&e.message); toast('❌ '+(e&&e.message||'erreur')); } }
+// Supprimer un plat précis.
+async function dishDelete(i){ if(!curProfile)return;
+  const m=await _readMyMenu(); if(!m||!m.items||!m.items[i]) return toast('Menu introuvable');
+  const name=m.items[i].name;
+  const ok=confirm('Supprimer « '+name+' » du menu du jour ?'); if(!ok) return;
+  const items=m.items.slice(); items.splice(i,1);
+  try{ await _myMenuRef().update({items, time:Date.now()}); toast('🗑 Plat supprimé'); shell(); }
+  catch(e){ console.error('DISH_DEL',e&&e.code,e&&e.message); toast('❌ '+(e&&e.message||'erreur')); } }
+// Supprimer tout le menu du jour, bloqué s'il existe des commandes.
+function menuDeleteConfirm(){ if(!curProfile)return;
+  const hasOrders=(incOrders||[]).filter(o=>o.date===todayISO()&&o.status!=='cancel').length;
+  if(hasOrders>0){ openSheet(`<div class="row" style="justify-content:space-between;padding:12px 0"><b>🗑 Menu du jour</b><span style="cursor:pointer;font-size:20px" onclick="closeAll()">✕</span></div>
+    <div class="warn"><b>⚠️ ${hasOrders} commande${hasOrders>1?'s':''} existent déjà pour ce menu.</b><br>Tu ne peux pas supprimer le menu du jour tant qu'il y a des commandes.</div>
+    <button class="btn ghost" onclick="closeAll()">Compris</button>`); return; }
+  openSheet(`<div class="row" style="justify-content:space-between;padding:12px 0"><b>🗑 Supprimer le menu du jour</b><span style="cursor:pointer;font-size:20px" onclick="closeAll()">✕</span></div>
+   <div class="warn">Supprimer le menu du jour retire ce menu de la liste (les clients ne pourront plus le voir).</div>
+   <div class="row" style="gap:8px"><button class="btn ghost" style="flex:1" onclick="closeAll()">Annuler</button>
+   <button class="btn g" style="flex:1;background:linear-gradient(135deg,#E6453C,#C62A22)" onclick="menuDeleteDo()">Supprimer</button></div>`); }
+async function menuDeleteDo(){ if(!curProfile)return;
+  const hasOrders=(incOrders||[]).filter(o=>o.date===todayISO()&&o.status!=='cancel').length;
+  if(hasOrders>0){ closeAll(); return toast('Impossible : des commandes existent déjà.'); }
+  try{ await _myMenuRef().delete(); closeAll(); toast('🗑 Menu du jour supprimé'); shell(); }
+  catch(e){ console.error('MENU_DEL',e&&e.code,e&&e.message); toast('❌ '+(e&&e.message||'erreur')); } }
+
 function foodMenuCard(m){
   const open=menuOpen(m); const mine=curProfile&&m.sellerId===curProfile.uid;
   const btn = mine ? `<span class="muted">C'est ta cantinière</span>`
@@ -1831,8 +2077,11 @@ function foodManageHTML(){
    <div class="muted">☕ commandes avant <b>${minHm(sh.cutoff)}</b> · 🛵 ${minHm(sh.winS)}–${minHm(sh.winE)}</div>
    <div style="margin-top:8px"><button class="btn g sm" onclick="foodEdit()">${today?'✏️ Modifier le menu du jour':'➕ Publier le menu du jour'}</button></div></div>`;
   const menuBlock = today ? `<div class="box"><b>🍽️ Menu du jour — ${esc(today.date)}</b>
-    ${(today.items||[]).map(it=>`<div class="row" style="justify-content:space-between;padding:3px 0"><span>• ${esc(it.name)}</span><b>${fmtFCFA(it.price)} FCFA</b></div>`).join('')}
-    <div class="muted" style="margin-top:4px">${menuOpen(today)?'🟢 Commandes ouvertes (avant '+minHm(today.cutoff)+')':"🔴 Commandes fermées pour aujourd'hui"}</div></div>` : `<p class="muted">Publie ton menu pour recevoir des commandes.</p>`;
+    ${(today.items||[]).map((it,i)=>`<div class="row" style="justify-content:space-between;padding:3px 0"><span class="grow">• ${esc(it.name)}</span><b>${fmtFCFA(it.price)} FCFA</b>
+      <span style="flex:none;display:flex;gap:6px;margin-left:8px"><button class="btn ghost sm" style="padding:5px 9px" onclick="dishEdit(${i})" title="Modifier ce plat">✏️</button><button class="btn ghost sm" style="padding:5px 9px;color:var(--sang);border-color:#F2C9C5" onclick="dishDelete(${i})" title="Supprimer ce plat">🗑</button></span></div>`).join('')}
+    <div class="muted" style="margin-top:4px">${menuOpen(today)?'🟢 Commandes ouvertes (avant '+minHm(today.cutoff)+')':"🔴 Commandes fermées pour aujourd'hui"}</div>
+    <div style="display:flex;gap:8px;margin-top:10px"><button class="btn g sm" style="flex:1" onclick="foodEdit()">➕ Ajouter / tout modifier</button>
+    <button class="btn ghost sm" style="flex:1;color:var(--sang);border-color:#F2C9C5" onclick="menuDeleteConfirm()">🗑 Supprimer le menu</button></div></div>` : `<p class="muted">Publie ton menu pour recevoir des commandes.</p>`;
   const todayOrders = incOrders.filter(o=>o.date===todayISO());
   const groups = groupIncoming(todayOrders);
   window._incGroups = groups;
