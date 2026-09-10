@@ -1043,6 +1043,30 @@ async function _bumpGo(id){ const d=await db.collection('listings').doc(id).get(
   }catch(e){ toast('❌ '+(e&&e.message||'erreur')); } }
 async function toggleSoldMine(id){ const d=await db.collection('listings').doc(id).get(); if(!d.exists)return;
   const now=!d.data().sold; await d.ref.update({sold:now}); toast(now?'✅ Marquée vendue':'↩️ Remise en vente'); closeAll(); view='sell';shell(); }
+// Supprimer définitivement une de MES annonces (article ou service).
+// Le vendeur voit d'abord une confirmation ; si la transaction est déjà lancée,
+// on propose plutôt « marquer vendu » pour ne pas fausser l'acheteur en cours.
+function deleteListingSheet(id){ const l=allListings.find(x=>x.id===id); if(!l)return;
+  if(!curProfile||l.sellerId!==curProfile.uid) return toast('Réservé au vendeur');
+  const inTx=txCache.some(t=>t.itemId===id && t.status!=='done');
+  const kind=isSvc(l)?'ce service':'cette annonce';
+  openSheet(`<div class="row" style="justify-content:space-between;padding:12px 0"><b>🗑 Supprimer</b><span style="cursor:pointer;font-size:20px" onclick="closeAll()">✕</span></div>
+   <div class="box" style="display:flex;gap:10px;align-items:center">${firstImg(l)?`<img src="${esc(firstImg(l))}" style="width:56px;height:56px;object-fit:cover;border-radius:12px;flex:none">`:''}<div class="grow"><b>${esc(l.t)}</b><div class="muted">${isSvc(l)?svcPriceTxt(l):(fmt(l.p)+' FCFA')}</div></div></div>
+   ${inTx?`<div class="warn">⚠️ Une transaction est en cours sur ${kind}. Tu peux la supprimer, mais l'acheteur perdra la référence. Le plus propre : marquer « vendu » après la remise.</div>`
+        :`<div class="warn">La suppression est <b>définitive</b> : ${kind} disparaîtra du marché et tu ne pourras pas la restaurer.</div>`}
+   <div class="row" style="gap:8px">
+     <button class="btn ghost" style="flex:1" onclick="closeAll()">Annuler</button>
+     <button class="btn" style="flex:1;background:linear-gradient(135deg,#E6453C,#C62A22);box-shadow:none" onclick="doDeleteListing('${l.id}')">🗑 Supprimer définitivement</button>
+   </div>`); }
+async function doDeleteListing(id){ const l=allListings.find(x=>x.id===id); if(!l)return;
+  if(!curProfile||l.sellerId!==curProfile.uid) return toast('Réservé au vendeur');
+  try{
+    await db.collection('listings').doc(id).delete();
+    // Retrait local immédiat (le snapshot serveur confirmera).
+    allListings=(allListings||[]).filter(x=>x.id!==id);
+    closeAll(); toast('🗑 '+(isSvc(l)?'Service':'Annonce')+' supprimé'+(isSvc(l)?'':'e'));
+    if(view==='home'||view==='sell')shell();
+  }catch(e){ console.error('DEL_LISTING',e&&e.code,e&&e.message); toast('❌ '+(e&&e.message||'suppression impossible')); } }
 // Modifier le prix d'un article déjà publié (le vendeur uniquement).
 function editPriceSheet(id){ const l=allListings.find(x=>x.id===id); if(!l)return;
   if(!curProfile||l.sellerId!==curProfile.uid) return toast('Réservé au vendeur');
@@ -1326,7 +1350,8 @@ async function openSeller(sid){ closeAll();
          <button class="btn ghost" style="flex:1" onclick="toggleSoldMine('${l.id}')">${l.sold?'↩️ Remettre en vente':'✅ Marquer vendue'}</button>
        </div>
        ${(!l.sold&&!listingStale(l))?`<button class="btn ghost sm" style="margin-top:8px;width:100%" onclick="bumpListing('${l.id}')">↻ Remettre en avant (remonter dans « Nouveautés »)</button>`:''}
-       ${(!l.sold)?`<button class="btn ghost sm" style="margin-top:8px;width:100%" onclick="gbSetupSheet('${l.id}')">🤝 ${gbActive(l)?'Modifier le groupe d\'achat (remise de groupe)':'Activer un groupe d\'achat (remise de groupe)'}</button>`:''}`
+       ${(!l.sold)?`<button class="btn ghost sm" style="margin-top:8px;width:100%" onclick="gbSetupSheet('${l.id}')">🤝 ${gbActive(l)?'Modifier le groupe d\'achat (remise de groupe)':'Activer un groupe d\'achat (remise de groupe)'}</button>`:''}
+       <button class="btn ghost sm" style="margin-top:8px;width:100%;color:var(--sang);border-color:#F2C9C5" onclick="deleteListingSheet('${l.id}')">🗑 Supprimer cette annonce</button>`
     : l.sold
       ? `<div class="row" style="gap:8px;margin-top:8px">
         <button class="btn ghost" style="flex:1" onclick="shareListing('${l.id}')">📤 Partager</button>
@@ -1353,7 +1378,8 @@ function detailSvc(l,mine){ const ty=svcCatOf(l.svcType); const img=galleryHtml(
     ? `<div class="info" style="border-left:4px solid var(--org)">C'est ton service.${l.sold?' <b>Marqué terminé.</b>':''}</div>
        <div class="row" style="gap:8px;margin-top:8px">
          <button class="btn ghost" style="flex:1" onclick="shareListing('${l.id}')">📤 Partager</button>
-         <button class="btn ${l.sold?'g':'ghost'}" style="flex:1" onclick="toggleSoldSvc('${l.id}')">${l.sold?'↩️ Remettre en ligne':'✅ Marquer terminé'}</button></div>`
+         <button class="btn ${l.sold?'g':'ghost'}" style="flex:1" onclick="toggleSoldSvc('${l.id}')">${l.sold?'↩️ Remettre en ligne':'✅ Marquer terminé'}</button></div>
+       <button class="btn ghost sm" style="margin-top:8px;width:100%;color:var(--sang);border-color:#F2C9C5" onclick="deleteListingSheet('${l.id}')">🗑 Supprimer ce service</button>`
     : (l.sold
        ? `<div class="info" style="text-align:center">✅ Ce service n'est plus proposé par le prestataire.</div>
           <div class="row" style="gap:8px;margin-top:8px"><button class="btn ghost" style="flex:1" onclick="shareListing('${l.id}')">📤 Partager</button>
@@ -1521,7 +1547,7 @@ function sellV(){if(!curProfile)return `<div class="center cardp" style="padding
       <button class="btn" style="flex:1" onclick="svcSheet()">🛠 Proposer un service</button>
     </div>
   </div></div>
-  <div style="padding:10px 12px">${mine.length?mine.map(tile).join(''):'<p class="muted center">Aucune annonce publiée.</p>'}</div>
+  <div style="padding:10px 12px">${mine.length?mine.map(l=>tile(l)+`<div style="display:flex;gap:8px;margin:-6px 0 12px;padding:0 2px"><button class="btn ghost sm" style="flex:1" onclick="editPriceSheet('${l.id}')">✏️ Prix</button><button class="btn ghost sm" style="flex:1" onclick="toggleSoldMine('${l.id}')">${l.sold?'↩️ Remettre en vente':'✅ Vendu'}</button><button class="btn ghost sm" style="flex:1;color:var(--sang);border-color:#F2C9C5" onclick="deleteListingSheet('${l.id}')">🗑 Supprimer</button></div>`).join(''):'<p class="muted center">Aucune annonce publiée.</p>'}</div>
   <div style="padding:6px 12px"><h3 style="margin:8px 0">Transactions sécurisées</h3>${txCache.filter(t=>t.buyerId===curProfile.uid||t.sellerId===curProfile.uid).length?txCache.filter(t=>t.buyerId===curProfile.uid||t.sellerId===curProfile.uid).map(txCard).join(''):'<p class="muted">Contacte un vendeur pour lancer une transaction sécurisée.</p>'}</div>`;
  return tabs;}
 function sellSheet(preCat){if(!curProfile)return openAuth();
