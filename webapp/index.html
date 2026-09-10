@@ -287,6 +287,9 @@ function moneyFmt(el){ if(!el)return; const d=String(el.value||'').replace(/\D/g
 // Lit un prix saisi (avec ou sans espaces) en nombre entier FCFA.
 function parseMoney(v){ const d=String(v==null?'':v).replace(/\D/g,''); return parseInt(d,10)||0; }
 function esc(s){return String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}
+// Normalise un texte pour la recherche : minuscules + suppression des accents
+// (é->e) pour qu'une saisie sans accent retrouve aussi les articles accentués.
+function norm(s){ return String(s==null?'':s).toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,''); }
 function timeago(t){if(!t)return '';let s=(Date.now()-t)/1000;if(s<60)return 'à l\'instant';if(s<3600)return Math.floor(s/60)+' min';if(s<86400)return Math.floor(s/3600)+' h';return Math.floor(s/86400)+' j'}
 function uidr(){return Math.random().toString(36).slice(2,9)}
 function logoMark(s){var u='hk'+Math.floor(Math.random()*1e6);return '<svg class="hkmark" width="'+s+'" height="'+s+'" viewBox="0 0 48 48" aria-hidden="true"><defs><linearGradient id="'+u+'" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#1C9E63"/><stop offset=".55" stop-color="#0E7A44"/><stop offset="1" stop-color="#0A5E34"/></linearGradient></defs><rect x="1.5" y="1.5" width="45" height="45" rx="13" fill="url(#'+u+')"/><rect x="1.5" y="1.5" width="45" height="45" rx="13" fill="none" stroke="rgba(255,255,255,.4)" stroke-width="1.1"/><path d="M16.5 12.5v15c0 3.6 2.9 6.5 6.5 6.5" fill="none" stroke="#fff" stroke-width="4.6" stroke-linecap="round" stroke-linejoin="round"/><path d="M31.5 12.5v15c0 3.6-2.9 6.5-6.5 6.5" fill="none" stroke="#fff" stroke-width="4.6" stroke-linecap="round" stroke-linejoin="round"/><path d="M16.5 25h15" stroke="#fff" stroke-width="4.6" stroke-linecap="round"/><circle cx="37" cy="10" r="3" fill="#FFA13E" stroke="#0E7A44" stroke-width="1"/></svg>';}
@@ -593,7 +596,8 @@ function homeV(){
   const rc=resolvedCity();
   const svcOnly=(catF==='all'&&svcShow==='svc');
   const studMode=(coinOn&&catF==='all');
-  const inFeed=(l)=>(!q||(l.t||'').toLowerCase().includes(q)||(l.city||'').toLowerCase().includes(q))&&(rc==='all'||(l.city||'')===rc);
+  const nq=norm(q);
+  const inFeed=(l)=>(!nq||norm(l.t||'').indexOf(nq)>=0||norm(l.city||'').indexOf(nq)>=0||norm(l.d||'').indexOf(nq)>=0)&&(rc==='all'||(l.city||'')===rc);
   let list;
   if(svcOnly){ list=allListings.filter(l=>l.svc&&!l.sold&&inFeed(l)); }
   else if(studMode){ list=allListings.filter(l=>isStudyItem(l)&&inFeed(l)).sort((a,b)=>(b.time||0)-(a.time||0)); }
@@ -643,13 +647,23 @@ function homeV(){
   let emptyTxt = studMode ? "Aucune annonce du Coin Étudiant pour l'instant. Publie tes livres ou cours usagés depuis « Vendre »."
     : (svcOnly ? "Aucun service pour l'instant. Propose le tien depuis « Vendre »."
       : `Aucun article pour le moment${cityF!=='all'?` dans cette ville (${esc(resolvedCity())})`:''}.`);
-  let cards=list.length?`<div class="grid">${list.slice(0,feedShow).map(tile).join('')}</div>`:`<div class="center cardp muted">${emptyTxt}</div>`;
+  let cards=list.length?`<div class="grid">${list.slice(0,feedShow).map(tile).join('')}</div>`:`<div class="center cardp muted">${q?('Aucun résultat pour « '+esc(q.trim())+' »'):emptyTxt}</div>`;
   let more = list.length>feedShow ? `<div style="text-align:center;padding:16px 0 2px"><button class="btn ghost sm" onclick="feedMore()">Afficher plus (${list.length-feedShow} restantes)</button></div>` : '';
   let sortRow = (!hideArtic && list.length>1) ? `<div class="row" style="gap:6px;padding:0 12px 4px;flex-wrap:wrap"><span class="muted" style="font-size:11px;margin-right:2px">Trier :</span>
       <span class="chip ${sortBy==='rec'?'on':''}" onclick="setSort('rec')">Récents</span>
       <span class="chip ${sortBy==='priceAsc'?'on':''}" onclick="setSort('priceAsc')">Prix ↑</span>
       <span class="chip ${sortBy==='priceDesc'?'on':''}" onclick="setSort('priceDesc')">Prix ↓</span></div>` : '';
-  return hero+actRow()+coinEntry()+cityBar()+featured+svcSection()+studPrompt()+catSection+searchChips+sortRow+studInfo+title+cards+more;
+  // --- Recherche : la barre est TOUJOURS en haut (juste sous l'en-tête hero),
+  // et dès qu'on tape, on bascule dans une vue « résultats » immédiate (sans les
+  // blocs de découverte : Nouveautés, Coin Étudiant, Services, catégories…). ---
+  const searching = !!q;
+  const searchBar = searchChips + (searching?`<div class="sectionTitle" style="padding-top:6px"><h3>Résultats pour « ${esc(q.trim())} »</h3><a onclick="clearSearch()">✕ Effacer</a></div>`:'');
+  const resultBlock = sortRow + studInfo + title + cards + more;
+  if(searching){
+    return hero + searchBar + resultBlock;
+  }
+  // Navigation / consultation normale (sans texte) : découverte puis le fil.
+  return hero + searchBar + actRow() + coinEntry() + cityBar() + featured + svcSection() + studPrompt() + catSection + resultBlock;
 }
 function feedMore(){ feedShow+=24; if(!chatIsOpen()) shell(); }
 // Recherche live (léger) : on enregistre la saisie puis on ne re-rend que ~150 ms
@@ -659,6 +673,7 @@ function liveSearch(el){ q=el.value;
   if(_qT) clearTimeout(_qT);
   _qT=setTimeout(()=>{ _qT=null; if(!chatIsOpen()) shell(); }, 150); }
 function setCat(id){catF=id;svcShow='';coinOn=false;feedShow=24;shell();}
+function clearSearch(){ q=''; window._hkWantTop=1; shell(); }
 function svcBackItems(){catF='all';svcShow='';coinOn=false;q='';feedShow=24;shell();}
 function firstImg(l){return (l.photos&&l.photos.length)?l.photos[0]:(l.img||'');}
 function tile(l){let im=firstImg(l);
