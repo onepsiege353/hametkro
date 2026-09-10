@@ -625,7 +625,7 @@ function homeV(){
   let catSection = hideArtic ? '' : `<div class="catSection"><h3>Parcourir par catégorie</h3>
     <div class="catRow">${CATS.map(c=>`<div class="catCell" onclick="setCat('${c.id}')"><div class="e">${c.e}</div><span>${c.n}</span></div>`).join('')}</div></div>`;
   const ph = studMode?'Rechercher un livre ou un cours…':(svcOnly?'Rechercher un service…':'Rechercher un article…');
-  let searchChips = `<div class="search"><span class="ic">🔍</span><input class="input" id="q" placeholder="${ph}" value="${esc(q)}" oninput="liveSearch(this)"></div>`
+  let searchChips = `<div class="search"><span class="ic">🔍</span><input class="input" id="q" placeholder="${ph}" value="${esc(q)}" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" oninput="liveSearch(this)"></div>`
     + (hideArtic ? '' : `<div class="chips"><div class="chip ${catF==='all'?'on':''}" onclick="setCat('all')">Tout</div>${CATS.map(c=>`<div class="chip ${catF===c.id?'on':''}" onclick="setCat('${c.id}')">${c.e} ${c.n}</div>`).join('')}</div>`);
   // --- NOUVEAUTÉS mises en avant : annonces récentes (< 48h), bandeau scrollable
   let featured='';
