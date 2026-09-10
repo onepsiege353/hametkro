@@ -438,6 +438,26 @@ function buildNotifs(uid){
     });
   }catch(e){ console.error('GBNOTIF',e&&e.message); }
 
+  // Notifications « nouveaux messages » : dérivées des conversations déjà en
+  // cache (AUCUNE lecture Firestore supplémentaire). Une entrée par fil de
+  // discussion, identifiée par l'horodatage du dernier message reçu : chaque
+  // nouveau message crée donc une nouvelle notification non lue, et ouvrir le
+  // fil (seen) la fait disparaître naturellement au prochain calcul.
+  try{
+    (convCache||[]).forEach(function(c){
+      const o=otherName(c); if(!o||!o.uid||isBlocked(o.uid)) return;
+      const sv=(c.seen&&c.seen[uid])||0;
+      const news=(c.msgs||[]).filter(function(m){ return m.uid!==uid && (m.time||0)>sv; });
+      if(!news.length) return;
+      const last=news[news.length-1];
+      const prev=(last.img?'📷 ':'')+((last.text||'').slice(0,80));
+      const nb=news.length;
+      arr.push({id:'msg_'+c.id+'_'+last.time,icon:'💬',
+        title:'Message'+((nb>1)?('s ('+nb+')'):'')+' de '+esc(o.name||'Quelqu\'un'),
+        body:esc(prev||'Nouveau message'),time:last.time||Date.now(),read:false,cid:c.id});
+    });
+  }catch(e){ console.error('MSGNOTIF',e&&e.message); }
+
   arr.sort((a,b)=>b.time-a.time);
   const readSet=new Set(JSON.parse(localStorage.getItem(notifReadKey(uid))||'[]'));
   arr.forEach(n=>{ if(readSet.has(n.id)) n.read=true; });
@@ -450,7 +470,7 @@ function markNotifsRead(){ if(!curProfile)return; const u=curProfile.uid;
   localStorage.setItem(notifReadKey(u),JSON.stringify([...readSet])); }
 function openNotifs(){ if(!curProfile)return openAuth(); markNotifsRead(); shell();
   openModal(`<div style="padding:14px 16px"><div class="row" style="justify-content:space-between"><b style="font-size:17px">🔔 Notifications</b><span style="cursor:pointer;font-size:20px" onclick="closeAll()">✕</span></div>
-    <div style="margin-top:6px">${notifsCache.length?notifsCache.map(n=>`<div class="box" style="display:flex;gap:10px;align-items:flex-start;border-left:3px solid ${n.read?'var(--line)':'var(--org)'}"><div style="font-size:22px">${n.icon}</div><div class="grow"><b>${n.title}</b>${!n.read?' <span class="badge">nouveau</span>':''}<p class="muted" style="margin:2px 0">${n.body}</p><div class="muted" style="font-size:10px">${timeago(n.time)}</div></div></div>`).join(''):'<p class="muted center" style="padding:30px 0">Aucune notification pour le moment.</p>'}</div></div>`); }
+    <div style="margin-top:6px">${notifsCache.length?notifsCache.map(n=>`<div class="box" ${n.cid?`onclick="openNotifConv('${n.cid}')" style="cursor:pointer;`:'style="'}:display:flex;gap:10px;align-items:flex-start;border-left:3px solid ${n.read?'var(--line)':'var(--org)'}"><div style="font-size:22px">${n.icon}</div><div class="grow"><b>${n.title}</b>${!n.read?' <span class="badge">nouveau</span>':''}<p class="muted" style="margin:2px 0">${n.body}</p><div class="muted" style="font-size:10px">${timeago(n.time)}${n.cid?' · ouvrir la discussion':''}</div></div></div>`).join(''):'<p class="muted center" style="padding:30px 0">Aucune notification pour le moment.</p>'}</div></div>`); }
 
 // Charge le profil Firestore de l'utilisateur courant (ou null si non connecté).
 async function refreshMe(){
@@ -557,7 +577,7 @@ function shell(){
       <div style="display:flex;align-items:center;gap:8px">
         <div style="text-align:right;font-size:11.5px;color:var(--grey);font-weight:600">${esc((curProfile.name||'Compte').split(' ')[0])}${isAdmin()?' <span class="badge">ADMIN</span>':''}</div>
         <div style="position:relative;cursor:pointer;width:36px;height:36px;border-radius:50%;background:var(--grn-soft);display:flex;align-items:center;justify-content:center" onclick="openNotifs()"><span style="font-size:18px">🔔</span>
-          ${notifUnread>0?`<span style="position:absolute;top:-3px;right:-3px;background:var(--sang);color:#fff;font-size:9px;font-weight:800;border-radius:50%;min-width:17px;height:17px;display:flex;align-items:center;justify-content:center;padding:0 3px;box-shadow:0 0 0 2px #fff">${notifUnread}</span>`:''}</div>
+          ${notifUnread>0?`<span id="notifDot" style="position:absolute;top:-3px;right:-3px;background:var(--sang);color:#fff;font-size:9px;font-weight:800;border-radius:50%;min-width:17px;height:17px;display:flex;align-items:center;justify-content:center;padding:0 3px;box-shadow:0 0 0 2px #fff">${notifUnread}</span>`:''}</div>
       </div>`
     : `<div class="logo grow" onclick="goView('home')" style="cursor:pointer">${logoMark(30)}<span class="words"><span class="word">hamet<b>kro</b></span><small>Marché ivoirien 🇨🇮</small></span></div>
       <button class="btn g sm" onclick="openAuth()">Se connecter</button>`;
@@ -1003,7 +1023,95 @@ function fireNotif(c){ if(!curProfile||!notifGranted()||!notifWanted()) return; 
   try{ const n=new Notification('💬 '+title,{body,icon:'icon-192.png',tag:'hk_'+c.id,requireInteraction:false});
     n.onclick=()=>{ window.focus(); try{ openConv(c.id); }catch(e){} n.close(); }; }catch(e){} }
 function notifStateHTML(){ return `<div class="box"><b>🔔 Notifications</b><p class="muted" style="margin:2px 0 8px">Préviens-toi des nouveaux messages même quand l'onglet est en arrière-plan.</p>
-  <div style="display:flex;gap:8px;align-items:center"><button class="btn ${notifGranted()?'g':'ghost'} sm" onclick="askPushPerm()">${notifBtnState()}</button><span class="muted" style="font-size:11px">${notifGranted()?'Autorisées par le navigateur':'demande d\u2019autorisation nécessaire'}</span></div></div>`; }
+  <div style="display:flex;gap:8px;align-items:center"><button class="btn ${notifGranted()?'g':'ghost'} sm" onclick="askPushPerm()">${notifBtnState()}</button><span class="muted" style="font-size:11px">${notifGranted()?'Autorisées par le navigateur':'demande d\u2019autorisation nécessaire'}</span></div>
+  <div style="display:flex;gap:8px;align-items:center;margin-top:8px"><button class="btn ${pingWanted()?'g':'ghost'} sm" onclick="setPingWanted(!pingWanted());shell()">${pingWanted()?'🔔 Son activé':'🔕 Son coupé'}</button><span class="muted" style="font-size:11px">Petit signal sonore quand un message arrive.</span></div></div>`; }
+/* ====== v55 : NOTIFICATIONS DE MESSAGES DANS L'APPLICATION ======
+ * Avant : un message reçu ne produisait QU'UNE notification système, et
+ * seulement si (a) la permission navigateur était accordée ET (b) l'onglet
+ * n'était PAS au premier plan (fireNotif). Rien dans la cloche 🔔, rien de
+ * visible si l'app était à l'écran, rien du tout app fermée.
+ * Désormais, à chaque nouvel arrivage de message :
+ *   1. la cloche 🔔 contient une entrée « Message de … » (cliquable → le fil) ;
+ *   2. un bandeau « 💬 … » s'affiche en haut de l'écran (même app au premier
+ *      plan, même en pleine discussion avec quelqu'un d'autre) ;
+ *   3. un léger signal sonore (désactivable depuis le profil).
+ * Aucune lecture Firestore en plus : tout est dérivé de `convCache`.
+ */
+function pingKey(){ return 'ham_ping_'+(curProfile?curProfile.uid:'anon'); }
+function pingWanted(){ try{ return localStorage.getItem(pingKey())!=='0'; }catch(e){ return true; } }
+function setPingWanted(v){ try{ localStorage.setItem(pingKey(), v?'1':'0'); }catch(e){} }
+// Met à jour la pastille rouge de la cloche SANS re-rendre tout le shell.
+function updateNotifBadge(){
+  const host=document.querySelector('.topbar'); if(!host) return;
+  let dot=document.getElementById('notifDot');
+  if(!notifUnread){ if(dot) dot.remove(); return; }
+  if(!dot){
+    const bell=host.querySelector('[onclick="openNotifs()"]'); if(!bell) return;
+    dot=document.createElement('span'); dot.id='notifDot';
+    dot.style.cssText='position:absolute;top:-3px;right:-3px;background:var(--sang);color:#fff;font-size:9px;font-weight:800;border-radius:50%;min-width:17px;height:17px;display:flex;align-items:center;justify-content:center;padding:0 3px;box-shadow:0 0 0 2px #fff';
+    bell.appendChild(dot);
+  }
+  dot.textContent = notifUnread>99?'99+':notifUnread;
+}
+// Ouvre le fil depuis une notification (cloche ou bandeau).
+function openNotifConv(cid){ try{ const b=document.getElementById('hkMsgBanner'); if(b) b.remove(); }catch(e){}
+  try{ closeAll(); }catch(e){} try{ openConv(cid); }catch(e){} }
+// Petit « ding » deux tons — aucune ressource externe, respecte le réglage son.
+function msgPing(){ if(!pingWanted()) return;
+  try{ const AC=window.AudioContext||window.webkitAudioContext; if(!AC) return;
+    window._hkAC=window._hkAC||new AC(); const ac=window._hkAC;
+    if(ac.state==='suspended') ac.resume().catch(function(){});
+    const t0=ac.currentTime;
+    [880,1320].forEach(function(f,i){
+      const o=ac.createOscillator(), g=ac.createGain(); o.type='sine'; o.frequency.value=f;
+      const t=t0+i*0.13;
+      g.gain.setValueAtTime(0.0001,t);
+      g.gain.exponentialRampToValueAtTime(0.10,t+0.02);
+      g.gain.exponentialRampToValueAtTime(0.0001,t+0.17);
+      o.connect(g); g.connect(ac.destination); o.start(t); o.stop(t+0.19);
+    });
+  }catch(e){} }
+// Bandeau « nouveau message » en haut de l'écran (disparaît seul après 7 s).
+function msgBanner(c,m){
+  if(!document.body) return;
+  const o=otherName(c); const nm=(o&&o.name)||'Quelqu\'un';
+  const prev=(m&&m.img?'📷 ':'')+((m&&m.text)||'').slice(0,90);
+  let el=document.getElementById('hkMsgBanner'); if(el) el.remove();
+  el=document.createElement('div'); el.id='hkMsgBanner';
+  el.style.cssText='position:fixed;top:8px;left:50%;transform:translateX(-50%);width:calc(100% - 20px);max-width:440px;z-index:120;background:#fff;border:1px solid var(--line);border-radius:14px;padding:10px 12px;display:flex;gap:10px;align-items:center;box-shadow:0 10px 30px -10px rgba(0,0,0,.35)';
+  el.innerHTML='<div style="width:38px;height:38px;flex:none;border-radius:50%;background:linear-gradient(160deg,#E3F3E9,#FBEEDC);display:flex;align-items:center;justify-content:center;font-size:19px">💬</div>'
+    +'<div class="grow" style="min-width:0"><b style="font-size:13px">'+esc(nm)+'</b>'
+    +'<div style="font-size:12px;color:var(--grey);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+esc(prev||'Nouveau message')+'</div></div>'
+    +'<button class="btn g sm" style="flex:none;padding:7px 10px" onclick="openNotifConv(\''+c.id+'\')">Répondre</button>'
+    +'<span style="flex:none;cursor:pointer;font-size:18px;color:var(--grey);padding-left:2px" onclick="(function(){var b=document.getElementById(\'hkMsgBanner\');if(b)b.remove();})()">✕</span>';
+  document.body.appendChild(el);
+  msgPing();
+  clearTimeout(window._hkBannerT);
+  window._hkBannerT=setTimeout(function(){ const b=document.getElementById('hkMsgBanner'); if(b) b.remove(); },7000);
+}
+// Détecte l'arrivée d'un message et déclenche le bandeau (une seule fois par
+// message). `u` = mon uid.
+let _msgLiveLast=0, _msgLiveInit=false;
+function msgLiveCheck(uid){
+  if(!uid) return;
+  let best=null;
+  (convCache||[]).forEach(function(c){
+    const o=otherName(c); if(!o||!o.uid||isBlocked(o.uid)) return;
+    const msgs=(c.msgs||[]).filter(function(m){ return m.uid!==uid; });
+    if(!msgs.length) return;
+    const last=msgs[msgs.length-1];
+    if(!best||(last.time||0)>(best.msg.time||0)) best={c:c,msg:last};
+  });
+  if(!best){ _msgLiveInit=true; return; }
+  // 1er instantané après connexion : on n'annonce pas l'historique (la cloche
+  // 🔔 et le badge Messages couvrent déjà les messages non lus).
+  if(!_msgLiveInit){ _msgLiveInit=true; _msgLiveLast=best.msg.time||Date.now(); return; }
+  if((best.msg.time||0)<=_msgLiveLast) return;
+  _msgLiveLast=best.msg.time||Date.now();
+  if(best.msg.uid===uid) return;                      // mon propre message
+  if(chatIsOpen() && _activeCid===best.c.id) return;  // je suis déjà dans le fil
+  msgBanner(best.c,best.msg);
+}
 
 
 /* ============== PAQUET B : CONFIANCE · FRAÎCHEUR · NÉGOCIATION ============== */
@@ -1659,7 +1767,7 @@ function chatIsOpen(){return !!_activeCid;}
 // Charge mes conversations (temps réel) une fois connecté.
 let _prevUnread=0;
 function listenConvs(){ auth.onAuthStateChanged(u=>{ if(chatUnsub)chatUnsub(); chatUnsub=null; convCache=[]; msgUnread=0; _prevUnread=0; _activeCid=null;
-  if(!u){ if(view==='msg'||view==='home')boot(); return; }
+  if(!u){ _msgLiveInit=false; _msgLiveLast=0; if(view==='msg'||view==='home')boot(); return; }
   chatUnsub=db.collection('conversations').where('participantIds','array-contains',u.uid).onSnapshot(snap=>{
     convCache=snap.docs.map(d=>d.data());
     msgUnread=convCache.reduce((s,c)=>s+unreadOf(c),0);
@@ -1669,6 +1777,9 @@ function listenConvs(){ auth.onAuthStateChanged(u=>{ if(chatUnsub)chatUnsub(); c
       if(grown.length) fireNotif(grown[0]);
     }
     _prevUnread=msgUnread;
+    // --- v55 : notifications de messages DANS l'app (cloche 🔔 + bandeau + son) ---
+    // buildNotifs lit `convCache` : aucune lecture réseau supplémentaire.
+    if(u&&u.uid){ buildNotifs(u.uid); updateNotifBadge(); msgLiveCheck(u.uid); }
     // Badge « non-lus » mis à jour en direct sur l'onglet Messages, même si on n'est
     // pas sur l'accueil/l'onglet Messages (sinon le « 1 » n'apparaît pas à la réception).
     updateMsgNavBadge();
