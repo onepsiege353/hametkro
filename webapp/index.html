@@ -552,13 +552,13 @@ function shell(){
   const _inSearch=!!(_actEl && _actEl.id==='q' && (_actEl.tagName==='INPUT'||_actEl.tagName==='TEXTAREA'));
   const _keepY=_inSearch? (window.pageYOffset||document.documentElement.scrollTop||document.body.scrollTop||0) : 0;
   let body = view==='home'?homeV(): view==='sell'?sellV(): view==='msg'?messagesV(): view==='me'?profileV(): view==='admin'?adminV(): view==='resto'?restoV(): homeV();
-  let top = curProfile? `<div class="logo grow">${logoMark(30)}<span class="words"><span class="word">hamet<b>kro</b></span><small>${esc(curProfile.country||"Côte d'Ivoire")} ${(curProfile.countryCode==='CI'||!curProfile.countryCode)?'🇨🇮':'🌍'} · ${esc(curProfile.city||'')}</small></span></div>
+  let top = curProfile? `<div class="logo grow" onclick="goView('home')" style="cursor:pointer">${logoMark(30)}<span class="words"><span class="word">hamet<b>kro</b></span><small>${esc(curProfile.country||"Côte d'Ivoire")} ${(curProfile.countryCode==='CI'||!curProfile.countryCode)?'🇨🇮':'🌍'} · ${esc(curProfile.city||'')}</small></span></div>
       <div style="display:flex;align-items:center;gap:8px">
         <div style="text-align:right;font-size:11.5px;color:var(--grey);font-weight:600">${esc((curProfile.name||'Compte').split(' ')[0])}${isAdmin()?' <span class="badge">ADMIN</span>':''}</div>
         <div style="position:relative;cursor:pointer;width:36px;height:36px;border-radius:50%;background:var(--grn-soft);display:flex;align-items:center;justify-content:center" onclick="openNotifs()"><span style="font-size:18px">🔔</span>
           ${notifUnread>0?`<span style="position:absolute;top:-3px;right:-3px;background:var(--sang);color:#fff;font-size:9px;font-weight:800;border-radius:50%;min-width:17px;height:17px;display:flex;align-items:center;justify-content:center;padding:0 3px;box-shadow:0 0 0 2px #fff">${notifUnread}</span>`:''}</div>
       </div>`
-    : `<div class="logo grow">${logoMark(30)}<span class="words"><span class="word">hamet<b>kro</b></span><small>Marché ivoirien 🇨🇮</small></span></div>
+    : `<div class="logo grow" onclick="goView('home')" style="cursor:pointer">${logoMark(30)}<span class="words"><span class="word">hamet<b>kro</b></span><small>Marché ivoirien 🇨🇮</small></span></div>
       <button class="btn g sm" onclick="openAuth()">Se connecter</button>`;
   let items=[['home','🏠','Accueil'],['resto','🍽️','Repas'],['sell','🗂️','Vendre']];
   if(curProfile) items.push(['msg','💬','Messages']);
@@ -644,6 +644,11 @@ function homeV(){
       : (catF!=='all' ? `<div class="sectionTitle"><h3>${catOf(catF).e} ${catOf(catF).n}</h3><a onclick="setCat('all')">Tout voir</a></div>`
         : `<div class="sectionTitle"><h3>Annonces récentes</h3><a onclick="svcBrowseAll()">Voir les services</a></div>`));
   const studInfo = studMode?`<div class="info" style="margin:0 12px 8px;border-left:4px solid #2B6CB0">📚 Livres & manuels à vendre + 🎓 cours particuliers, entre étudiants. Remise au campus en lieu sûr — <b>ne paie jamais d'avance</b>.</div>`:'';
+  // Boutons « vendre » directs dans le Coin Étudiant (visible en mode étudiant).
+  const studSellCTA = studMode ? `<div style="padding:2px 12px 8px">${curProfile
+    ? `<div class="row" style="gap:8px"><button class="btn g sm" style="flex:1" onclick="sellSheet('books')">📚 Vendre un livre / manuel</button><button class="btn g sm" style="flex:1" onclick="svcSheet()">🎓 Proposer un cours</button></div>
+       <div class="muted" style="font-size:11px;margin-top:4px;text-align:center">Ton annonce de livre apparaîtra ici dans le Coin Étudiant.</div>`
+    : `<button class="btn g sm" style="width:100%" onclick="openAuth()">Se connecter pour vendre un livre</button>`}</div>` : '';
   let emptyTxt = studMode ? "Aucune annonce du Coin Étudiant pour l'instant. Publie tes livres ou cours usagés depuis « Vendre »."
     : (svcOnly ? "Aucun service pour l'instant. Propose le tien depuis « Vendre »."
       : `Aucun article pour le moment${cityF!=='all'?` dans cette ville (${esc(resolvedCity())})`:''}.`);
@@ -658,7 +663,7 @@ function homeV(){
   // blocs de découverte : Nouveautés, Coin Étudiant, Services, catégories…). ---
   const searching = !!q;
   const searchBar = searchChips + (searching?`<div class="sectionTitle" style="padding-top:6px"><h3>Résultats pour « ${esc(q.trim())} »</h3><a onclick="clearSearch()">✕ Effacer</a></div>`:'');
-  const resultBlock = sortRow + studInfo + title + cards + more;
+  const resultBlock = sortRow + (studSellCTA||'') + studInfo + title + cards + more;
   if(searching){
     return hero + searchBar + resultBlock;
   }
@@ -1293,7 +1298,7 @@ async function openSeller(sid){ closeAll();
       <div class="muted" style="font-size:9.5px;margin-top:4px">Transaction clôturée · ${timeago(r.createdAt)}</div></div>`).join('')
       : `<p class="muted" style="padding:4px 2px">Aucun avis pour l'instant. Les acheteurs notent le vendeur après une transaction clôturée.</p>`}
   </div>`;
-  renderApp(`<div class="topbar"><div class="logo grow"><b>hamet</b><i>kro</i></div><button class="btn g sm" onclick="view='home';shell()">← Accueil</button></div>${coverBanner}${head}${contactCard}${sellerItems}${reviewsBlock}${actions}<div style="height:30px"></div>`);
+  renderApp(`<div class="topbar"><div class="logo grow" onclick="goView('home')" style="cursor:pointer"><b>hamet</b><i>kro</i></div><button class="btn g sm" onclick="goView('home')">← Accueil</button></div>${coverBanner}${head}${contactCard}${sellerItems}${reviewsBlock}${actions}<div style="height:30px"></div>`);
   document.documentElement.scrollTop=0;
 }
  function detail(id){let l=allListings.find(x=>x.id===id);if(!l)return;
@@ -1512,11 +1517,11 @@ function sellV(){if(!curProfile)return `<div class="center cardp" style="padding
   <div style="padding:10px 12px">${mine.length?mine.map(tile).join(''):'<p class="muted center">Aucune annonce publiée.</p>'}</div>
   <div style="padding:6px 12px"><h3 style="margin:8px 0">Transactions sécurisées</h3>${txCache.filter(t=>t.buyerId===curProfile.uid||t.sellerId===curProfile.uid).length?txCache.filter(t=>t.buyerId===curProfile.uid||t.sellerId===curProfile.uid).map(txCard).join(''):'<p class="muted">Contacte un vendeur pour lancer une transaction sécurisée.</p>'}</div>`;
  return tabs;}
-function sellSheet(){if(!curProfile)return openAuth();
- let pid='f'+uidr();
+function sellSheet(preCat){if(!curProfile)return openAuth();
+ let pid='f'+uidr(); preCat=preCat||'fashion';
  openSheet(`<div style="padding:12px 0 4px"><div class="row" style="justify-content:space-between"><h2 style="margin:0">Publier</h2><span style="cursor:pointer;font-size:20px" onclick="closeAll()">✕</span></div></div>
-  <label>Catégorie</label><div class="row" style="gap:6px;flex-wrap:wrap">${CATS.map(c=>`<span class="catpill ${c.id==='fashion'?'on':''}" data-cat="${c.id}" onclick="pickCat(this)">${c.e} ${c.n}</span>`).join('')}</div>
-  <input type="hidden" id="${pid}_cat" value="fashion">
+  <label>Catégorie</label><div class="row" style="gap:6px;flex-wrap:wrap">${CATS.map(c=>`<span class="catpill ${c.id===preCat?'on':''}" data-cat="${c.id}" onclick="pickCat(this)">${c.e} ${c.n}</span>`).join('')}</div>
+  <input type="hidden" id="${pid}_cat" value="${preCat}">
   <label>Photos (jusqu'à 5)</label><div class="thumbs" id="${pid}_th"><div class="addPhoto" onclick="document.getElementById('${pid}_file').click()">📷<br>Ajouter</div></div>
   <input type="file" id="${pid}_file" accept="image/*" multiple style="display:none" onchange="addPhotos('${pid}',this)">
   <input type="hidden" id="${pid}_photos">
