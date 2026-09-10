@@ -534,6 +534,14 @@ function shell(){
   // Abonnements admin paresseux (économie de lectures) : actifs seulement sur la
   // vue 'admin'. À appeler avant le rendu pour que les données soient prêtes.
   _admEnsure(view);
+  // Seule une VRAIE navigation (changement d'écran / de filtre, ou clic sur un
+  // onglet pour revenir en haut) doit remonter la page en haut. Les re-rendus
+  // provoqués par un snapshot en arrière-plan (favoris, alertes, messages,
+  // nouvelles annonces, présence…) ne doivent PAS faire « sauter » la page quand
+  // on est en train de scroller (cause des sauts de page sur l'accueil).
+  const _navKey = view+'|'+catF+'|'+svcShow+'|'+coinOn+'|'+sortBy;
+  const _changedNav = (window._hkNav!==_navKey)||(window._hkWantTop);
+  window._hkNav=_navKey; window._hkWantTop=0;
   // Saisie en cours dans la barre de recherche : on repère si l'utilisateur est
   // en train de taper (focus sur #q) pour ne PAS faire sauter la page ni perdre
   // le focus/caret à chaque re-rendu (sinon la barre « se masquait » au clavier).
@@ -554,8 +562,8 @@ function shell(){
   items.push(['me','👤','Compte']);
   // Le badge « non-lus » de Messages est posé dynamiquement par updateMsgNavBadge()
   // (appelé après le rendu), pour qu'il soit mis à jour en direct quel que soit l'écran.
-  items=items.map(([k,i,l])=>`<button class="${view===k?'on':''}" onclick="view='${k}';shell()"><span class="i" style="position:relative">${i}</span>${l}</button>`).join('');
-  if(isAdmin()) items+=`<button class="${view==='admin'?'on':''}" onclick="view='admin';shell()"><span class="i">📊</span>Admin</button>`;
+  items=items.map(([k,i,l])=>`<button class="${view===k?'on':''}" onclick="goView('${k}')"><span class="i" style="position:relative">${i}</span>${l}</button>`).join('');
+  if(isAdmin()) items+=`<button class="${view==='admin'?'on':''}" onclick="goView('admin')"><span class="i">📊</span>Admin</button>`;
   let installBar = deferredPrompt ? `<div style="position:fixed;left:50%;transform:translateX(-50%);bottom:64px;width:100%;max-width:460px;z-index:45;padding:6px 12px">
     <div style="background:var(--org);color:#fff;border-radius:14px;padding:10px 12px;display:flex;align-items:center;gap:8px;box-shadow:0 4px 14px rgba(0,0,0,.18)">
       <span style="font-size:20px">📲</span><div class="grow" style="font-size:12.5px;font-weight:700">Installe Hametkro sur ton téléphone</div>
@@ -571,11 +579,14 @@ function shell(){
       const L=qe.value.length; try{ qe.setSelectionRange(L,L); }catch(e){}
       try{ qe.scrollIntoView({block:'nearest',inline:'nearest'}); }catch(e){}
     }
-  } else {
+  } else if(_changedNav){
     try{ document.documentElement.scrollTop=0; }catch(e){}
   }
   updateMsgNavBadge();
 }
+// Navigation par la barre du bas : change d'écran et remonte en haut (re-cliquer
+// sur l'onglet actif ramène aussi en haut). goView est utilisé par les onglets.
+function goView(k){ window._hkWantTop=1; view=k; shell(); }
 
 /* ============== HOME (lecture publique) ============== */
 function homeV(){
