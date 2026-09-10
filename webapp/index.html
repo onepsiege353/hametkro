@@ -537,6 +537,7 @@ function shell(){
   // Abonnements admin paresseux (économie de lectures) : actifs seulement sur la
   // vue 'admin'. À appeler avant le rendu pour que les données soient prêtes.
   _admEnsure(view);
+  _foodTickEnsure(view==='resto'); // compte à rebours vivant de l'onglet Repas
   // Seule une VRAIE navigation (changement d'écran / de filtre, ou clic sur un
   // onglet pour revenir en haut) doit remonter la page en haut. Les re-rendus
   // provoqués par un snapshot en arrière-plan (favoris, alertes, messages,
@@ -2570,7 +2571,10 @@ function orderCard(o){ const mine=curProfile&&o.sellerId===curProfile.uid;
    ${!mine?reorderBtn(o):''}
    <div style="margin-top:8px;display:flex;align-items:center;justify-content:space-between;gap:8px"><span>${stMap[o.status]||esc(o.status)}</span>${act}</div></div>`; }
 async function orderAct(id,status){ const d=await db.collection('foodorders').doc(id).get(); if(!d.exists)return;
+  const o=d.data();
   await d.ref.update({status,updatedAt:Date.now()});
+  // La cantinière met à jour l'agrégat public « Ça part vite » de son menu.
+  if(o&&o.sellerId===curProfile.uid) syncMenuHot(o.menuId,true);
   toast(status==='done'?'🎉 Commande livrée':status==='confirmed'?'Commande confirmée':'Commande annulée'); shell(); }
 // --- Regroupement par entreprise / point de livraison ---
 function incGroupCard(g,i){
@@ -2601,6 +2605,7 @@ async function orderDeliverPoint(i){
   if(!ready.length) return toast('Aucune commande confirmée à livrer ici');
   try{
     for(const o of ready) await db.collection('foodorders').doc(o.id).update({status:'done',updatedAt:Date.now()});
+    try{ [...new Set(ready.map(o=>o.menuId))].forEach(mid=>syncMenuHot(mid,true)); }catch(_){}
     toast('🛵 '+ready.length+' commande'+(ready.length>1?'s':'')+' livrée'+(ready.length>1?'s':'')+' — tournée '+esc(grp.place||'terminée'));
   }catch(e){ console.error('FOOD_GROUP_DELIVER',e&&e.code,e&&e.message); toast('❌ '+(e&&e.message||'erreur')); }
   shell();
@@ -2615,6 +2620,121 @@ function foodBrowse(){
   const top = favs? `<div class="pill-cta" style="margin:2px 14px 6px">⭐ Tes cantinières favorites (${favs}) sont en tête de liste.</div>`:'';
   return top+`<div style="padding:0 12px 10px">${list.map(foodMenuCard).join('')}</div>`;
 }
+/* ============== « LA TABLE DU JOUR » : onglet Repas vivant ==============
+ * Un bandeau qui vit : compte à rebours en direct avant la fermeture des
+ * commandes, chiffres du jour, le PLAT COUP DE CŒUR (le plus commandé) en grand,
+ * et « 🔥 Ça part vite » (classement des plats du jour).
+ *
+ * Popularité : les règles Firestore ne laissent lire une commande qu'à son
+ * acheteur et à sa cantinière — impossible de compter toutes les commandes côté
+ * client. On publie donc, sur le menu du jour (lecture publique), un AGRÉGAT
+ * anonyme {hot:{items,total}} que la cantinière met à jour quand elle confirme
+ * ou livre. Aucune donnée personnelle n'est exposée. */
+function foodOpenMenus(){ return (foodToday||[]).filter(m=>menuOpen(m)); }
+// Prochaine fermeture : la plus proche parmi les cantinières encore ouvertes.
+function foodNextCutoff(){ const os=foodOpenMenus(); if(!os.length) return null;
+  return os.reduce((a,m)=> (m.cutoff!=null && (a==null||m.cutoff<a)) ? m.cutoff : a, null); }
+function foodMinsLeft(){ const c=foodNextCutoff(); if(c==null) return null; return c-nowMin(); }
+function foodStats(){ const t=foodToday||[];
+  return { cantis:t.length,
+    open:t.filter(m=>menuOpen(m)).length,
+    dishes:t.reduce((a,m)=>a+((m.items||[]).length),0),
+    confirmed:t.reduce((a,m)=>a+((m.hot&&m.hot.total)||0),0) }; }
+// Agrège les plats les plus commandés du jour à partir des compteurs publics.
+function foodHotDishes(){ const map={};
+  (foodToday||[]).forEach(m=>{ const h=m.hot; if(!h||!Array.isArray(h.items))return;
+    h.items.forEach(it=>{ if(!it||!it.name||!(it.qty>0))return;
+      if(!map[it.name]) map[it.name]={name:it.name,qty:0,price:0,menu:m,_best:null};
+      const d=map[it.name]; d.qty+=it.qty;
+      // On garde le menu qui a le plus écoulé ce plat (meilleur lien pour commander).
+      if(!d._best || it.qty>d._best.qty){ d._best={qty:it.qty}; d.menu=m; d.price=it.price||d.price; }
+      if(!d.price&&it.price) d.price=it.price; }); });
+  return Object.values(map).map(d=>({name:d.name,qty:d.qty,price:d.price,menu:d.menu}))
+    .sort((a,b)=>b.qty-a.qty); }
+function foodCountdownText(){ const c=foodNextCutoff(); const m=foodMinsLeft();
+  if(c==null||m==null||m<=0) return '🔴 Commandes fermées pour aujourd’hui';
+  const h=Math.floor(m/60), mm=m%60;
+  const left = h>0 ? (h+' h '+pad2(mm)+' min') : (mm+' min');
+  return '⏰ Commande avant '+minHm(c)+' · il reste '+left; }
+// Le plat mis en avant : le plus commandé, sinon une suggestion du premier menu ouvert.
+function foodHeart(){ const hot=foodHotDishes(); const open=foodOpenMenus();
+  if(!open.length) return null;
+  if(hot.length) return {d:hot[0],label:'🔥 Le coup de cœur du jour'};
+  const m=open[0]; const it=(m.items||[])[0]; if(!it) return null;
+  return {d:{name:it.name,price:it.price,qty:0,menu:m},label:'✨ La suggestion du jour'}; }
+function foodHeartCard(h){ const d=h.d, m=d.menu; const mine=curProfile&&m.sellerId===curProfile.uid;
+  return `<div style="border-radius:18px;overflow:hidden;background:radial-gradient(120% 150% at 12% -10%,#1C9E63,#0E7A44 45%,#075231);color:#fff;box-shadow:0 16px 34px -18px rgba(7,82,49,.75);margin:0 0 10px">
+    <div style="padding:16px">
+      <div style="font-size:10.5px;font-weight:800;letter-spacing:.7px;opacity:.92">${esc(h.label)}</div>
+      <div style="display:flex;align-items:center;gap:13px;margin-top:9px">
+        <div style="font-size:46px;flex:none;filter:drop-shadow(0 8px 14px rgba(0,0,0,.32))">🍲</div>
+        <div style="min-width:0;flex:1">
+          <div style="font-size:19px;font-weight:900;line-height:1.2">${esc(d.name)}</div>
+          <div style="font-size:12px;opacity:.95;margin-top:3px">${fmtFCFA(d.price)} FCFA · ${esc(m.sellerName||'Cantinière')}${m.zone?(' · 📦 '+esc(m.zone)):''}</div>
+          ${d.qty?`<div style="font-size:11px;margin-top:5px;background:rgba(255,255,255,.18);display:inline-block;padding:3px 10px;border-radius:999px">🔥 ${d.qty} portion${d.qty>1?'s':''} commandée${d.qty>1?'s':''} aujourd’hui</div>`:''}
+        </div>
+      </div>
+      ${mine
+        ? `<div style="font-size:12px;margin-top:11px;opacity:.92">C’est ta cantinière — c’est toi la cheffe 👑</div>`
+        : `<button class="btn gold" style="margin-top:12px" onclick="orderSheet('${m.id}')">🛒 Commander ce plat</button>`}
+    </div></div>`; }
+function foodTable(){
+  if(!(foodToday||[]).length) return '';
+  const st=foodStats(); const open=st.open>0;
+  const kpi=(ic,val,lab)=>`<div style="flex:1;background:#fff;border:1px solid var(--line);border-radius:14px;padding:10px 8px;text-align:center;box-shadow:var(--sh-s)">
+    <div style="font-size:17px">${ic}</div><div style="font-size:16px;font-weight:900;line-height:1.1">${val}</div>
+    <div class="muted" style="font-size:9.5px;line-height:1.2">${lab}</div></div>`;
+  const stats=`<div style="display:flex;gap:8px;margin:0 0 10px">
+    ${kpi('🍲',st.open+'/'+st.cantis,'cantinière'+(st.cantis>1?'s':'')+' ouverte'+(st.open>1?'s':''))}
+    ${kpi('🍽️',st.dishes,'plats aujourd’hui')}
+    ${kpi('🧾',st.confirmed,'portions confirmées')}</div>`;
+  // Bandeau compte à rebours (élément mis à jour en direct sans re-rendu complet).
+  const pulse=open?`<span style="width:9px;height:9px;border-radius:50%;background:${st.confirmed&&foodMinsLeft()<30?'#E6453C':'#0E7A44'};box-shadow:0 0 0 4px rgba(14,122,68,.15);flex:none"></span>`:'';
+  const count=`<div class="box" style="display:flex;align-items:center;gap:10px;border-left:4px solid ${open?'var(--grn)':'var(--grey2)'};margin:0 0 10px">
+    ${pulse}<b id="foodCount" style="font-size:13.5px;${open?'color:var(--grn-d)':'color:var(--grey)'}">${foodCountdownText()}</b></div>`;
+  const heart=foodHeart();
+  const heartHtml=heart?foodHeartCard(heart):'';
+  // « Ça part vite » : classement des plats du jour (compteurs publics).
+  const hot=foodHotDishes().slice(0,3);
+  const max=hot.length?hot[0].qty:1;
+  const hotHtml = hot.length ? `<div style="margin:4px 0 6px"><div class="sectionTitle" style="padding:6px 2px 6px"><h3 style="font-size:15px">🔥 Ça part vite aujourd’hui</h3></div>
+    ${hot.map((d,i)=>`<div class="box" style="padding:10px 12px;margin:6px 0;cursor:pointer" onclick="orderSheet('${d.menu.id}')">
+      <div class="row" style="justify-content:space-between"><b style="font-size:13px">${i===0?'🥇':(i===1?'🥈':'🥉')} ${esc(d.name)}</b><span class="badge" style="background:var(--org)">${d.qty}×</span></div>
+      <div style="height:7px;background:var(--line);border-radius:6px;margin-top:6px"><div style="height:7px;border-radius:6px;width:${Math.round(d.qty/max*100)}%;background:linear-gradient(90deg,#FB8B24,#F07A1E)"></div></div>
+      <div class="muted" style="font-size:10.5px;margin-top:4px">${esc(d.menu.sellerName||'')} · ${fmtFCFA(d.price)} FCFA${d.menu.zone?(' · 📦 '+esc(d.menu.zone)):''}</div></div>`).join('')}</div>`
+    : (open?`<div class="info" style="margin:0 0 10px">💡 Les plats les plus commandés du jour s’afficheront ici (🔄 dès que les cantinières confirment les premières commandes).</div>`:'');
+  return `<div style="padding:0 12px 4px">
+    <div class="sectionTitle" style="padding:2px 2px 8px"><h3 style="font-size:16px">🌅 La Table du jour</h3><span class="muted" style="font-size:10.5px">${esc(new Date().toLocaleDateString('fr-FR',{weekday:'long',day:'numeric',month:'long'}))}</span></div>
+    ${count}${stats}${heartHtml}${hotHtml}</div>`; }
+// Mise à jour EN DIRECT du compte à rebours (DOM seul) : pas de re-rendu complet.
+let _foodTimer=null, _foodWasOpen=null;
+function _foodTick(){
+  const el=document.getElementById('foodCount'); if(el) el.innerHTML=foodCountdownText();
+  const open=foodOpenMenus().length>0;
+  if(_foodWasOpen!==null && open!==_foodWasOpen && view==='resto'){ _foodWasOpen=open; shell(); return; }
+  _foodWasOpen=open;
+}
+function _foodTickEnsure(on){
+  if(on){ if(_foodWasOpen===null) _foodWasOpen=foodOpenMenus().length>0;
+    _foodTick(); if(!_foodTimer) _foodTimer=setInterval(_foodTick,30000); }
+  else if(_foodTimer){ clearInterval(_foodTimer); _foodTimer=null; _foodWasOpen=null; }
+}
+// Agrégat public de popularité écrit par la cantinière sur SON menu du jour.
+let _hotSynced={};
+async function syncMenuHot(menuId,force){ if(!curProfile||!menuId)return;
+  const m=(foodToday||[]).find(x=>x.id===menuId); if(!m||m.sellerId!==curProfile.uid) return;
+  if(_hotSynced[menuId] && !force) return;
+  const mine=(incOrders||[]).filter(o=>o.menuId===menuId && o.status!=='cancel');
+  const map={}; let total=0;
+  mine.forEach(o=>{ (o.items||[]).forEach(it=>{ if(!it||!it.name)return;
+      if(!map[it.name]) map[it.name]={name:it.name,price:it.price||0,qty:0};
+      map[it.name].qty+=(it.qty||0); if(it.price)map[it.name].price=it.price; });
+    total+=(o.items||[]).reduce((a,x)=>a+((x.qty||0)),0); });
+  const items=Object.values(map).sort((a,b)=>b.qty-a.qty);
+  try{ await db.collection('foodmenus').doc(menuId).update({hot:{items,total,updatedAt:Date.now()}});
+    _hotSynced[menuId]=true; }
+  catch(e){ console.warn('HOT_SYNC',e&&e.code,e&&e.message); } }
+
 function restoV(){
   let hero=`<div class="hero" style="background:radial-gradient(120% 160% at 15% -10%,#1C9E63,#0E7A44 46%,#075231);border-radius:0"><h1>🍽️ Repas du jour</h1><p>Les cantinières publient leur menu chaque matin. Commande avant l'heure limite et récupère ton plat à la pause. <b>Paiement à la livraison.</b></p></div>`;
   let head='';
@@ -2622,7 +2742,7 @@ function restoV(){
   else if(!shopOf()){ head=`<div class="box" style="border-left:4px solid var(--grn)"><div class="row"><div style="font-size:30px">🍲</div><div class="grow"><b>Tu livres des repas à la pause ?</b><p class="muted" style="margin:2px 0">Ouvre ta cantinière : publie ton menu du jour, ta zone et ton créneau. Les commandes arrivent ici.</p></div></div><button class="btn g" onclick="foodEdit()">Ouvrir ma cantinière</button></div>`; }
   const manage = (curProfile && shopOf()) ? foodManageHTML() : '';
   const myOrdersBlock = (curProfile && myOrders.length) ? `<div style="padding:2px 12px"><h3 style="margin:12px 2px 6px">🛒 Mes commandes</h3>${myOrders.map(orderCard).join('')}</div>` : '';
-  return hero+`<div style="padding:10px 12px">${head||''}</div>${manage}
+  return hero+foodTable()+`<div style="padding:0 12px">${head||''}</div>${manage}
    <div class="sectionTitle" style="padding-top:4px"><h3>🍱 Menus du jour</h3></div>
    ${foodBrowse()}
    ${myOrdersBlock}<div style="height:24px"></div>`;
@@ -2644,6 +2764,9 @@ function foodManageHTML(){
   window._incGroups = groups;
   const incoming = groups.length ? `<h3 style="margin:12px 2px 8px">📋 Commandes du jour (${todayOrders.length}) — regroupées par entreprise</h3>${groups.map((g,i)=>incGroupCard(g,i)).join('')}`
     : `<p class="muted">Aucune commande reçue aujourd'hui pour l'instant. Les commandes d'un même point seront regroupées ici.</p>`;
+  // À l'ouverture de son espace, la cantinière rafraîchit l'agrégat public du jour
+  // (une seule écriture par session grâce au garde-fou _hotSynced).
+  if(today) setTimeout(()=>syncMenuHot(today.id), 700);
   return `<div style="padding:0 12px"><h2 style="margin:10px 2px 2px">Ma cantinière</h2>${panel}${menuBlock}${incoming}</div>`;
 }
 
