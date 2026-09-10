@@ -682,13 +682,15 @@ function clearSearch(){ q=''; window._hkWantTop=1; shell(); }
 function svcBackItems(){catF='all';svcShow='';coinOn=false;q='';feedShow=24;shell();}
 function firstImg(l){return (l.photos&&l.photos.length)?l.photos[0]:(l.img||'');}
 function tile(l){let im=firstImg(l);
+  const gbOn=!isSvc(l)&&gbActive(l);
+  const gbTag = gbOn ? `<div style="display:flex;align-items:center;gap:5px;flex-wrap:wrap;margin:0 0 5px"><span style="background:#F3E8FA;color:#7B1FA2;border:1px solid #E1CCF2;font-size:9px;font-weight:800;padding:2px 6px;border-radius:6px">🤝 Groupé</span>${gbReachedOff(l)?`<span style="background:#E7F4EC;color:var(--grn);font-size:9px;font-weight:800;padding:2px 6px;border-radius:6px">−${gbReachedOff(l)}%</span>`:''}</div>` : '';
   return `<div class="card tile" onclick="detail('${l.id}')">
   <div class="img">${im?`<img src="${esc(im)}" style="width:100%;height:100%;object-fit:cover">`:`<span class="e">${isSvc(l)?svcCatOf(l.svcType).e:catOf(l.cat).e}</span>`}
     ${favHeart(l)}
     ${(l.photos&&l.photos.length>1)?`<span style="position:absolute;right:44px;top:8px;background:rgba(0,0,0,.5);color:#fff;font-size:9px;padding:2px 6px;border-radius:6px">🖼 ${l.photos.length}</span>`:''}
     ${l.sold?`<span style="position:absolute;left:8px;top:8px;background:rgba(0,0,0,.55);color:#fff;font-size:9px;font-weight:800;padding:3px 8px;border-radius:999px">${isSvc(l)?'TERMINÉ':'VENDU'}</span>`:''}
     <span class="new">${(Date.now()-(l.time||0))<3*864e5?'NOUVEAU':''}</span></div>
-  <div class="bd"><h4>${esc(l.t)}</h4><div class="pr"${isSvc(l)?` style="color:var(--org);font-size:12.5px"`:''}>${isSvc(l)?('🛠 '+svcPriceTxt(l)):(fmt(l.p)+' FCFA')}</div>
+  <div class="bd">${gbTag}<h4>${esc(l.t)}</h4><div class="pr"${isSvc(l)?` style="color:var(--org);font-size:12.5px"`:''}>${isSvc(l)?('🛠 '+svcPriceTxt(l)):(fmt(l.p)+' FCFA')}</div>
     <div class="me"><span>📍 ${esc(l.city||'')}</span><span>${timeago(l.time)}</span></div></div></div>`;}
 
 // Carte compacte d'un service (bandeau « Bende » de l'accueil).
@@ -1170,7 +1172,10 @@ function gbPanel(l,mine){ if(!l||l.svc||l.sold)return '';
 // modifier la fiche d'un article ordinaire ni d'un service).
 function injectGbPanel(l){ if(!l||l.svc||l.sold)return; const m=document.getElementById('modal'); if(!m)return;
   const mine=curProfile&&l.sellerId===curProfile.uid; const html=gbPanel(l,mine); if(!html)return;
-  const cardp=m.querySelector('.cardp'); const host=(cardp||m); host.insertAdjacentHTML('beforeend', html); }
+  // On affiche le panneau d'achat groupé juste sous le prix (visible sans scroller)
+  // au lieu de l'enfouir en bas de la fiche.
+  const slot=m.querySelector('#gbSlot'); const host=(slot||m.querySelector('.cardp')||m);
+  host.insertAdjacentHTML('beforeend', html); }
 
 async function ensureConvFor(l){ const cid=convIdKey(curProfile.uid,l.sellerId,l.id);
   const ref=db.collection('conversations').doc(cid); const d=await ref.get();
@@ -1310,6 +1315,7 @@ async function openSeller(sid){ closeAll();
   <h2 style="margin:0">${esc(l.t)}</h2>
   <div class="muted">📍 ${esc(l.city||'')}, Côte d'Ivoire · ${timeago(l.time)}</div>
   <div style="font-size:25px;font-weight:900;color:var(--grn);margin:8px 0">${fmt(l.p)} FCFA <span class="chip on" style="font-size:10px;vertical-align:middle;cursor:default">${esc(l.cond||'')}</span></div>
+  <div id="gbSlot"></div>
   <div class="box"><b>Description</b><p class="muted" style="margin:5px 0;font-size:13px">${esc(l.d||"Vendeur de confiance. Remise en main propre, paiement à la réception — jamais d'avance.")}</p></div>
   <div class="box" style="display:flex;gap:10px;align-items:center;cursor:pointer" onclick="closeAll();openSeller('${l.sellerId}')"><div class="av">🛍️</div><div class="grow" id="detSeller"><span class="muted">…</span></div></div>
   ${mine
@@ -1319,7 +1325,8 @@ async function openSeller(sid){ closeAll();
          <button class="btn g" style="flex:1" onclick="editPriceSheet('${l.id}')">✏️ Modifier le prix</button>
          <button class="btn ghost" style="flex:1" onclick="toggleSoldMine('${l.id}')">${l.sold?'↩️ Remettre en vente':'✅ Marquer vendue'}</button>
        </div>
-       ${(!l.sold&&!listingStale(l))?`<button class="btn ghost sm" style="margin-top:8px;width:100%" onclick="bumpListing('${l.id}')">↻ Remettre en avant (remonter dans « Nouveautés »)</button>`:''}`
+       ${(!l.sold&&!listingStale(l))?`<button class="btn ghost sm" style="margin-top:8px;width:100%" onclick="bumpListing('${l.id}')">↻ Remettre en avant (remonter dans « Nouveautés »)</button>`:''}
+       ${(!l.sold)?`<button class="btn ghost sm" style="margin-top:8px;width:100%" onclick="gbSetupSheet('${l.id}')">🤝 ${gbActive(l)?'Modifier le groupe d\'achat (remise de groupe)':'Activer un groupe d\'achat (remise de groupe)'}</button>`:''}`
     : l.sold
       ? `<div class="row" style="gap:8px;margin-top:8px">
         <button class="btn ghost" style="flex:1" onclick="shareListing('${l.id}')">📤 Partager</button>
